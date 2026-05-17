@@ -1,10 +1,19 @@
+#![allow(static_mut_refs)]
+
 mod game_state;
 mod lua_api;
 
+use macroquad::logging as log;
+use macroquad::prelude::*;
+
 use egui_macroquad::egui;
 use game_state::*;
-use macroquad::prelude::*;
 use mlua::Lua;
+
+use std::sync::LazyLock;
+
+// Набор звуков:         https://ci.itch.io/400-sounds-pack
+// Палитра для спрайтов: https://coolors.co/30343f-fafaff-e4d9ff-273469-1e2749
 
 #[macroquad::main(window_conf)]
 async fn main() -> anyhow::Result<()> {
@@ -12,10 +21,18 @@ async fn main() -> anyhow::Result<()> {
 
   let centered_camera_pos = vec2(state.grid.width() as f32 / 2.0, state.grid.height() as f32 / 2.0);
   let camera_entity =
-    state.spawn_entity((Position(centered_camera_pos), ZoomFactor(2.0), CameraTag));
+    state.spawn_entity((Position(centered_camera_pos), ZoomFactor(3.0), CameraTag));
 
   let player_pos = vec2(0.0, 0.0);
   state.spawn_player((Position(player_pos), Sprite(Texture2D::empty()), Movable, OnGrid));
+
+  let wall_pos = vec2(1.0, 1.0);
+  let wall_texture_bytes = include_bytes!("../assets/textures/wall-horizontal.png");
+
+  let wall_texture = Texture2D::from_file_with_format(wall_texture_bytes, Some(ImageFormat::Png));
+  wall_texture.set_filter(FilterMode::Nearest);
+
+  state.spawn_entity((Position(wall_pos), Sprite(wall_texture), OnGrid, Solid));
 
   let lua = lua_api::create().unwrap();
 
@@ -61,7 +78,6 @@ fn window_conf() -> Conf {
 }
 
 fn setup_ui_layout(egui_ctx: &egui::Context, lua: &Lua, state: &mut State) {
-  #[expect(static_mut_refs, reason = "Testing purposes")]
   egui::Window::new("Test window").show(egui_ctx, |ui| unsafe {
     static mut SELECTED: Direction = Direction::North;
 
@@ -80,6 +96,9 @@ fn setup_ui_layout(egui_ctx: &egui::Context, lua: &Lua, state: &mut State) {
 
       lua_api::run(lua, state, format!("move_player(Direction.{})", selected_str)).unwrap();
     }
+
+    let debug_cfg = DebugConfig::get_mut();
+    ui.checkbox(&mut debug_cfg.draw_sprite_outline, "Draw sprite outline");
   });
 }
 
@@ -124,7 +143,6 @@ fn construct_camera(world: &hecs::World, camera_entity: hecs::Entity) -> Camera2
   let display_rect = Rect::new(0.0, 0.0, screen_width(), screen_height());
   let mut camera = Camera2D::from_display_rect(display_rect);
 
-  // TODO: Zoom on player
   let camera_pos = world.get::<&Position>(camera_entity).unwrap();
   camera.target = camera_pos.global();
 
@@ -139,6 +157,32 @@ fn draw_sprites(world: &hecs::World) {
     let global_pos = pos.global();
 
     draw_texture(sprite, global_pos.x, global_pos.y, WHITE);
-    draw_rectangle_lines(global_pos.x, global_pos.y, Grid::CELL_SIZE, Grid::CELL_SIZE, 2.0, BLACK);
+
+    if DebugConfig::get().draw_sprite_outline {
+      draw_rectangle_lines(
+        global_pos.x,
+        global_pos.y,
+        Grid::CELL_SIZE,
+        Grid::CELL_SIZE,
+        2.0,
+        Color::from_hex(0x161d36),
+      );
+    }
+  }
+}
+
+#[derive(Default)]
+struct DebugConfig {
+  draw_sprite_outline: bool,
+}
+
+impl DebugConfig {
+  fn get_mut() -> &'static mut Self {
+    static mut CFG: LazyLock<DebugConfig> = LazyLock::new(DebugConfig::default);
+    unsafe { &mut CFG }
+  }
+
+  fn get() -> &'static Self {
+    Self::get_mut()
   }
 }
