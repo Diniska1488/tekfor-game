@@ -85,7 +85,7 @@ impl State {
   }
 }
 
-#[derive(Serialize, Deserialize, EnumIter, IntoStaticStr, Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize, EnumIter, IntoStaticStr, Clone, Copy, Debug, PartialEq)]
 pub enum Direction {
   North,
   East,
@@ -185,6 +185,7 @@ pub struct Movable;
 pub struct OnGrid;
 
 struct PlayerTag;
+pub struct CameraTag;
 
 deref!(Position, Vec2);
 deref!(ZoomFactor, f32);

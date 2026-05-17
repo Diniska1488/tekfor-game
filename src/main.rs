@@ -1,18 +1,13 @@
 mod game_state;
 mod lua_api;
 
-use macroquad::logging as log;
-use macroquad::prelude::*;
-
-use macroquad::ui::widgets::Window;
-use macroquad::ui::{Skin, Ui, hash, root_ui};
-
+use egui_macroquad::egui;
 use game_state::*;
+use macroquad::prelude::*;
+use mlua::Lua;
 
 #[macroquad::main(window_conf)]
 async fn main() -> anyhow::Result<()> {
-  let global_ui_skin = ui_skin(&mut root_ui());
-
   let mut state = State::with_grid_size(3, 3);
 
   let centered_camera_pos = vec2(state.grid.width() as f32 / 2.0, state.grid.height() as f32 / 2.0);
@@ -23,27 +18,24 @@ async fn main() -> anyhow::Result<()> {
   state.spawn_player((Position(player_pos), Sprite(Texture2D::empty()), Movable, OnGrid));
 
   let lua = lua_api::create().unwrap();
-  // lua_api::run(&lua, &mut state, "move_player(Direction.North)").unwrap();
 
   loop {
     clear_background(BLUE);
 
-    // Test
-    if is_key_pressed(KeyCode::Space) {
-      lua_api::run(
-        &lua,
-        &mut state,
-        r#"
-          move_player(Direction.South)
-          move_player(Direction.East)
-        "#,
-      )
-      .unwrap();
+    let mut ui_wants_pointer_input = false;
+
+    egui_macroquad::ui(|egui_ctx| {
+      ui_wants_pointer_input = egui_ctx.wants_pointer_input();
+
+      egui_ctx.set_pixels_per_point(2.5);
+
+      setup_ui_layout(egui_ctx, &lua, &mut state);
+    });
+
+    if !ui_wants_pointer_input {
+      update_camera(&mut state.world, camera_entity);
     }
 
-    draw_ui(&global_ui_skin);
-
-    update_camera(&mut state.world, camera_entity);
     let camera = construct_camera(&state.world, camera_entity);
 
     set_camera(&camera);
@@ -51,6 +43,9 @@ async fn main() -> anyhow::Result<()> {
       draw_sprites(&state.world);
     }
     set_default_camera();
+
+    draw_fps();
+    egui_macroquad::draw();
 
     next_frame().await;
   }
@@ -65,11 +60,30 @@ fn window_conf() -> Conf {
   }
 }
 
-fn update_camera(world: &mut hecs::World, camera_entity: hecs::Entity) {
-  if is_ui_active() {
-    return;
-  }
+fn setup_ui_layout(egui_ctx: &egui::Context, lua: &Lua, state: &mut State) {
+  #[expect(static_mut_refs, reason = "Testing purposes")]
+  egui::Window::new("Test window").show(egui_ctx, |ui| unsafe {
+    static mut SELECTED: Direction = Direction::North;
 
+    egui::ComboBox::from_label("Move direction").selected_text(format!("{:?}", SELECTED)).show_ui(
+      ui,
+      |ui| {
+        ui.selectable_value(&mut SELECTED, Direction::North, "North");
+        ui.selectable_value(&mut SELECTED, Direction::East, "East");
+        ui.selectable_value(&mut SELECTED, Direction::South, "South");
+        ui.selectable_value(&mut SELECTED, Direction::West, "West");
+      },
+    );
+
+    if ui.button("Move player").clicked() {
+      let selected_str: &'static str = SELECTED.into();
+
+      lua_api::run(lua, state, format!("move_player(Direction.{})", selected_str)).unwrap();
+    }
+  });
+}
+
+fn update_camera(world: &mut hecs::World, camera_entity: hecs::Entity) {
   let Ok((zoom_factor, camera_pos)) =
     world.query_one_mut::<(&mut ZoomFactor, &mut Position)>(camera_entity)
   else {
@@ -120,10 +134,6 @@ fn construct_camera(world: &hecs::World, camera_entity: hecs::Entity) -> Camera2
   camera
 }
 
-fn is_ui_active() -> bool {
-  root_ui().is_mouse_over(mouse_position().into())
-}
-
 fn draw_sprites(world: &hecs::World) {
   for (pos, sprite) in world.query::<(&Position, &Sprite)>().iter() {
     let global_pos = pos.global();
@@ -132,36 +142,3 @@ fn draw_sprites(world: &hecs::World) {
     draw_rectangle_lines(global_pos.x, global_pos.y, Grid::CELL_SIZE, Grid::CELL_SIZE, 2.0, BLACK);
   }
 }
-
-fn draw_ui(skin: &Skin) {
-  root_ui().push_skin(skin);
-
-  draw_fps();
-
-  Window::new(hash!(), vec2(470.0, 50.0), vec2(300.0, 300.0)).ui(&mut root_ui(), |ui| {
-    ui.label(None, "Test label");
-
-    if ui.button(None, "Test button") {
-      log::info!("Test button was pressed");
-    }
-  });
-
-  root_ui().pop_skin();
-}
-
-fn ui_skin(ui: &mut Ui) -> Skin {
-  let label_style = ui.style_builder().font_size(48).build();
-
-  let button_style = ui
-    .style_builder()
-    .font_size(32)
-    .color(Color::from_hex(0xDEE2E6))
-    .color_hovered(Color::from_hex(0xCED4DA))
-    .color_clicked(Color::from_hex(0xADB5BD))
-    .margin(RectOffset::new(10.0, 10.0, 10.0, 10.0))
-    .build();
-
-  Skin { label_style, button_style, ..ui.default_skin() }
-}
-
-struct CameraTag;

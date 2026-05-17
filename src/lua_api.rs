@@ -22,12 +22,15 @@ pub fn create() -> LuaResult<Lua> {
   Ok(lua)
 }
 
-pub fn run(lua: &Lua, state: &mut State, code: &str) -> LuaResult<()> {
+pub fn run<S>(lua: &Lua, state: &mut State, code: S) -> LuaResult<()>
+where
+  S: AsRef<str>,
+{
   lua.scope(move |scope| {
     let state = scope.create_any_userdata_ref_mut(state)?;
 
     lua.set_named_registry_value(STATE_KEY, state)?;
-    lua.load(code).exec()?;
+    lua.load(code.as_ref()).exec()?;
     lua.unset_named_registry_value(STATE_KEY)
   })
 }
