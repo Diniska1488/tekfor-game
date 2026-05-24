@@ -159,10 +159,19 @@ fn construct_camera(world: &hecs::World, camera_entity: hecs::Entity) -> Camera2
 }
 
 fn draw_sprites(world: &hecs::World) {
-  for (pos, sprite) in world.query::<(&Position, &Sprite)>().iter() {
-    let global_pos = pos.global();
+  let mut render_queue = Vec::<(u32, Vec2, Texture2D)>::new();
 
-    draw_texture(sprite, global_pos.x, global_pos.y, WHITE);
+  for (pos, sprite, entity) in world.query::<(&Position, &Sprite, hecs::Entity)>().iter() {
+    let global_pos = pos.global();
+    let z_index = world.get::<&ZIndex>(entity).map(|z| z.0).unwrap_or(0);
+
+    render_queue.push((z_index, global_pos, sprite.weak_clone()));
+  }
+
+  render_queue.sort_by_key(|&(z, _, _)| z);
+
+  for (_, global_pos, texture) in render_queue.into_iter() {
+    draw_texture(&texture, global_pos.x, global_pos.y, WHITE);
 
     if DebugConfig::get().draw_sprite_outline {
       draw_rectangle_lines(

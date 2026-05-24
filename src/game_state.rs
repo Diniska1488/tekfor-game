@@ -25,13 +25,9 @@ impl State {
   }
 
   pub fn move_entity(&mut self, entity: hecs::Entity, x: u32, y: u32) {
-    let max_horizontal_index = self.grid.width() - 1;
-    let max_vertical_index = self.grid.height() - 1;
+    let is_out_of_bounds = self.grid.get_cell(x, y).is_none();
 
-    let new_x = x.clamp(0, max_horizontal_index);
-    let new_y = y.clamp(0, max_vertical_index);
-
-    if self.has_anything_solid_at(new_x, new_y) {
+    if is_out_of_bounds || self.has_anything_solid_at(x, y) {
       return;
     }
 
@@ -42,10 +38,10 @@ impl State {
     };
 
     self.grid.remove_from_cell(entity, entity_pos.x as u32, entity_pos.y as u32);
-    self.grid.add_to_cell(entity, new_x, new_y);
+    self.grid.add_to_cell(entity, x, y);
 
-    entity_pos.x = new_x as f32;
-    entity_pos.y = new_y as f32;
+    entity_pos.x = x as f32;
+    entity_pos.y = y as f32;
   }
 
   pub fn spawn_entity(&mut self, components: impl hecs::DynamicBundle) -> hecs::Entity {
@@ -60,6 +56,7 @@ impl State {
   pub fn spawn_player_at(&mut self, pos: Vec2) -> hecs::Entity {
     let entity = self.spawn_entity((
       Sprite(self.asset_manager.get(AssetID::Player)),
+      ZIndex(1),
       Solid,
       Movable,
       OnGrid,
@@ -180,10 +177,6 @@ impl State {
     }
 
     let (new_x, new_y) = advance_pos_in_direction((x, y), dir);
-
-    if self.has_anything_solid_at(new_x, new_y) {
-      return;
-    }
 
     pushable_entities.into_iter().for_each(|ent| self.move_entity(ent, new_x, new_y));
   }
@@ -378,6 +371,8 @@ macro_rules! deref {
 enum StatefulObjectKind {
   Door,
 }
+
+pub struct ZIndex(pub u32);
 
 #[derive(Clone, Copy)]
 pub struct Position(pub Vec2);
