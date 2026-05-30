@@ -6,18 +6,20 @@ pub mod states;
 pub mod systems;
 pub mod utils;
 
-use components::Position;
-use resources::AssetManager;
+use components::*;
+use resources::{AssetID, AssetManager};
 use serde::{Deserialize, Serialize};
 use strum::{EnumIter, IntoStaticStr};
 
 use states::editor::Editor;
-use states::gameplay::Gameplay;
+use states::gameplay::{Gameplay, MoveOptions};
 use states::menu::Menu;
 
 use macroquad::experimental::camera::mouse::Camera;
 use macroquad::logging as log;
 use macroquad::prelude::*;
+
+use std::ops::{Deref, DerefMut};
 
 pub struct Game {
   pub asset_manager: AssetManager,
@@ -154,5 +156,250 @@ impl Grid {
       return None;
     }
     Some((y * self.width + x) as usize)
+  }
+}
+
+pub struct WorldGrid {
+  pub grid: Grid,
+  pub world: hecs::World,
+}
+
+impl WorldGrid {
+  pub fn new(width: u32, height: u32, mut world: hecs::World) -> Self {
+    let grid = Grid::new(width, height, &mut world);
+
+    Self { grid, world }
+  }
+
+  pub fn width(&self) -> u32 {
+    self.grid.width()
+  }
+
+  pub fn height(&self) -> u32 {
+    self.grid.height()
+  }
+
+  pub fn get_cell(&self, x: u32, y: u32) -> Option<&[hecs::Entity]> {
+    self.grid.get_cell(x, y)
+  }
+
+  pub fn add_to_cell(&mut self, entity: hecs::Entity, x: u32, y: u32) {
+    self.grid.add_to_cell(entity, x, y);
+  }
+
+  pub fn remove_from_cell(&mut self, entity: hecs::Entity, x: u32, y: u32) {
+    self.grid.remove_from_cell(entity, x, y);
+  }
+
+  pub fn spawn_entity(&mut self, components: impl hecs::DynamicBundle) -> hecs::Entity {
+    let entity = self.world.spawn(components);
+
+    if let Ok((pos, _)) = self.world.query_one::<(&Position, &OnGrid)>(entity).get() {
+      self.grid.add_to_cell(entity, pos.x, pos.y);
+    }
+    entity
+  }
+
+  pub fn spawn_player_at(&mut self, pos: UVec2) -> hecs::Entity {
+    self.spawn_entity((
+      Sprite(AssetID::Player),
+      ZIndex(1),
+      Solid,
+      Movable,
+      OnGrid,
+      Player,
+      Position(pos),
+      ActionQueue::default(),
+    ))
+  }
+
+  pub fn spawn_horizontal_wall_at(&mut self, pos: UVec2) -> hecs::Entity {
+    self.spawn_wall_at(pos, AssetID::WallHorizontal)
+  }
+
+  pub fn spawn_horizontal_left_edge_wall_at(&mut self, pos: UVec2) -> hecs::Entity {
+    self.spawn_wall_at(pos, AssetID::WallHorizontalLeftEdge)
+  }
+
+  pub fn spawn_right_lower_corner_wall_at(&mut self, pos: UVec2) -> hecs::Entity {
+    self.spawn_wall_at(pos, AssetID::WallRightLowerCorner)
+  }
+
+  fn spawn_wall_at(&mut self, pos: UVec2, id: AssetID) -> hecs::Entity {
+    self.spawn_entity((Sprite(id), OnGrid, Solid, Position(pos)))
+  }
+
+  pub fn spawn_crate_at(&mut self, pos: UVec2) -> hecs::Entity {
+    self.spawn_entity((Sprite(AssetID::Crate), OnGrid, Solid, Movable, Pushable, Position(pos)))
+  }
+
+  pub fn spawn_fireball_at(&mut self, pos: UVec2, dir: Direction) -> hecs::Entity {
+    self.spawn_entity((
+      Sprite(AssetID::Dummy),
+      Movable,
+      OnGrid,
+      Position(pos),
+      Facing(dir),
+      Tickable(Interactable {
+        linked_entity: None,
+        handler_kind: InteractableHandlerKind::Fireball,
+      }),
+    ))
+  }
+
+  pub fn spawn_fireball_thrower_at(&mut self, pos: UVec2, dir: Direction) -> hecs::Entity {
+    self.spawn_entity((
+      Sprite(AssetID::Dummy),
+      OnGrid,
+      Position(pos),
+      Facing(dir),
+      Tickable(Interactable {
+        linked_entity: None,
+        handler_kind: InteractableHandlerKind::FireballThrower,
+      }),
+    ))
+  }
+
+  pub fn spawn_pressure_plate(
+    &mut self,
+    pos: UVec2,
+    linked_entity: Option<hecs::Entity>,
+  ) -> hecs::Entity {
+    self.spawn_entity((
+      Sprite(AssetID::PressurePlate),
+      OnGrid,
+      Position(pos),
+      Tickable(Interactable {
+        linked_entity,
+        handler_kind: InteractableHandlerKind::PressurePlate,
+      }),
+    ))
+  }
+
+  pub fn spawn_door_at(&mut self, pos: UVec2) -> hecs::Entity {
+    self.spawn_entity((
+      StatefulObjectKind::Door,
+      Sprite(AssetID::DoorClosed),
+      OnGrid,
+      Closed,
+      Solid,
+      Position(pos),
+      Interactable { linked_entity: None, handler_kind: InteractableHandlerKind::Door },
+    ))
+  }
+
+  pub fn move_entity(&mut self, entity: hecs::Entity, opts: MoveOptions) -> bool {
+    if !self.world.satisfies::<(&Movable, &OnGrid)>(entity) {
+      return false;
+    }
+
+    let Ok(new_pos) = self
+      .world
+      .get::<&Position>(entity)
+      .map(|pos| utils::advance_pos_in_direction(pos.into_inner(), opts.dir))
+    else {
+      return false;
+    };
+
+    if opts.push {
+      self.push_entities_if_any(new_pos.x, new_pos.y, opts.dir);
+    }
+
+    self.move_entity_to_pos(entity, new_pos.x, new_pos.y)
+  }
+
+  pub fn interact(&mut self, entity: hecs::Entity, dir: Direction) {
+    let Ok(pos) = self.world.get::<&Position>(entity).map(|pos| pos.into_inner()) else {
+      return;
+    };
+
+    let target_pos = utils::advance_pos_in_direction(pos, dir);
+
+    let Some(cell_entities) = self.grid.get_cell(target_pos.x, target_pos.y) else {
+      return;
+    };
+
+    let interactable_entities: Vec<(InteractableHandlerKind, _, _)> = cell_entities
+      .iter()
+      .filter_map(|&entity| {
+        let interactable = self.world.get::<&Interactable>(entity).ok()?;
+
+        Some((interactable.handler_kind, entity, interactable.linked_entity))
+      })
+      .collect();
+
+    for (handler_kind, entity, linked_entity) in interactable_entities {
+      handler_kind.to_fn()(self, entity, linked_entity);
+    }
+  }
+
+  pub fn has_anything_solid_at(&self, x: u32, y: u32) -> bool {
+    let Some(cell_entities) = self.grid.get_cell(x, y) else {
+      return false;
+    };
+
+    cell_entities.iter().any(|&ent| self.world.satisfies::<&Solid>(ent))
+  }
+
+  fn push_entities_if_any(&mut self, x: u32, y: u32, dir: Direction) {
+    let Some(cell_entities) = self.grid.get_cell(x, y) else {
+      return;
+    };
+
+    let pushable_entities: Vec<hecs::Entity> = cell_entities
+      .iter()
+      .filter(|&&ent| self.world.satisfies::<(&Movable, &Pushable)>(ent))
+      .cloned()
+      .collect();
+
+    if pushable_entities.is_empty() {
+      return;
+    }
+
+    pushable_entities.into_iter().for_each(|ent| {
+      self.move_entity(ent, MoveOptions::new(dir));
+    });
+  }
+
+  fn move_entity_to_pos(&mut self, entity: hecs::Entity, x: u32, y: u32) -> bool {
+    let is_out_of_bounds = self.grid.get_cell(x, y).is_none();
+
+    if is_out_of_bounds || self.has_anything_solid_at(x, y) {
+      return false;
+    }
+
+    let Ok((entity_pos, _, _)) =
+      self.world.query_one_mut::<(&mut Position, &Movable, &OnGrid)>(entity)
+    else {
+      return false;
+    };
+
+    self.grid.remove_from_cell(entity, entity_pos.x, entity_pos.y);
+    self.grid.add_to_cell(entity, x, y);
+
+    let start = *entity_pos;
+    {
+      entity_pos.x = x;
+      entity_pos.y = y;
+    }
+    let end = Position(uvec2(x, y));
+
+    let _ = self.world.insert_one(entity, Animation::new(AnimationKind::Move { start, end }));
+
+    true
+  }
+}
+
+impl DerefMut for WorldGrid {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.world
+  }
+}
+
+impl Deref for WorldGrid {
+  type Target = hecs::World;
+
+  fn deref(&self) -> &Self::Target {
+    &self.world
   }
 }

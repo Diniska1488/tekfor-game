@@ -1,7 +1,6 @@
-use crate::Direction;
 use crate::resources::{AssetID, Settings};
-use crate::states::gameplay::Gameplay;
 use crate::systems::tick;
+use crate::{Direction, WorldGrid};
 
 use macroquad::math::{UVec2, Vec2};
 use serde::{Deserialize, Serialize};
@@ -98,7 +97,7 @@ pub struct ZIndex(pub u32);
 pub struct Sprite(pub AssetID);
 
 type InteractableHandler =
-  fn(&mut Gameplay, this_entity: hecs::Entity, linked_entity: Option<hecs::Entity>);
+  fn(&mut WorldGrid, this_entity: hecs::Entity, linked_entity: Option<hecs::Entity>);
 
 #[derive(EnumIter, IntoStaticStr, Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub enum InteractableHandlerKind {
