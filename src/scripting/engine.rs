@@ -1,4 +1,6 @@
-use crate::world::{ActionKind, Direction, State};
+use super::api;
+use crate::Direction;
+use crate::states::gameplay::Gameplay;
 
 use serde::Serialize;
 use strum::IntoEnumIterator;
@@ -11,30 +13,16 @@ const STATE_KEY: &str = "__STATE";
 pub fn create() -> LuaResult<Lua> {
   let lua = Lua::new();
 
-  add_func(&lua, "move_player", |lua, state, dir: LuaValue| {
-    state.push_player_action(ActionKind::Move(lua.from_value(dir)?));
-
-    Ok(())
-  })?;
-
-  add_func(&lua, "interact", |lua, state, dir: LuaValue| {
-    state.push_player_action(ActionKind::Interact(lua.from_value(dir)?));
-
-    Ok(())
-  })?;
-
-  add_func(&lua, "wait", |_, state, ()| {
-    state.push_player_action(ActionKind::NoOp);
-
-    Ok(())
-  })?;
+  add_func(&lua, "move_player", api::move_player)?;
+  add_func(&lua, "interact", api::interact)?;
+  add_func(&lua, "wait", api::wait)?;
 
   add_enum::<Direction>(&lua)?;
 
   Ok(lua)
 }
 
-pub fn run<S>(lua: &Lua, state: &mut State, code: S) -> LuaResult<()>
+pub fn run<S>(lua: &Lua, state: &mut Gameplay, code: S) -> LuaResult<()>
 where
   S: AsRef<str>,
 {
@@ -49,7 +37,7 @@ where
 
 fn add_func<F, A>(lua: &Lua, name: &str, f: F) -> LuaResult<()>
 where
-  F: Fn(&Lua, &mut State, A) -> LuaResult<()> + MaybeSend + 'static,
+  F: Fn(&Lua, &mut Gameplay, A) -> LuaResult<()> + MaybeSend + 'static,
   A: FromLuaMulti,
 {
   let func = lua.create_function(move |lua, args| {

@@ -1,4 +1,4 @@
-use crate::world::*;
+use crate::components::*;
 
 use serde::{Deserialize, Serialize};
 use strum::{EnumIter, IntoStaticStr};
