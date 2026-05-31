@@ -2,8 +2,6 @@ use crate::components::*;
 use crate::states::gameplay::MoveOptions;
 use crate::{WorldGrid, utils};
 
-use macroquad::logging as log;
-
 pub fn update_tickable(world_grid: &mut WorldGrid) {
   let tickable: Vec<(InteractableHandlerKind, _, _)> = world_grid
     .query::<(&Tickable, hecs::Entity)>()
@@ -33,11 +31,7 @@ pub fn update_death_causers(world_grid: &mut WorldGrid) {
     }
   }
 
-  if let Err(err) =
-    entities_to_despawn.into_iter().try_for_each(|entity| world_grid.despawn_entity(entity))
-  {
-    log::error!("{}", err);
-  }
+  let _ = entities_to_despawn.into_iter().try_for_each(|entity| world_grid.despawn_entity(entity));
 }
 
 pub fn fireball_handler(

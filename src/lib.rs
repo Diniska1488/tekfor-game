@@ -87,7 +87,6 @@ pub enum GameState {
 
 impl Default for GameState {
   fn default() -> Self {
-    #[allow(clippy::default_constructed_unit_structs)]
     Self::Menu(Menu::default())
   }
 }
@@ -234,7 +233,15 @@ impl WorldGrid {
   }
 
   pub fn spawn_crate_at(&mut self, pos: UVec2) -> hecs::Entity {
-    self.spawn_entity((Sprite(AssetID::Crate), OnGrid, Solid, Movable, Pushable, Position(pos)))
+    self.spawn_entity((
+      Sprite(AssetID::Crate),
+      ZIndex(1),
+      OnGrid,
+      Solid,
+      Movable,
+      Pushable,
+      Position(pos),
+    ))
   }
 
   pub fn spawn_fireball_at(&mut self, pos: UVec2, dir: Direction) -> hecs::Entity {
