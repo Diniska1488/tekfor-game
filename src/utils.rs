@@ -1,3 +1,4 @@
+use crate::components::Sprite;
 use crate::{Direction, Grid};
 
 use macroquad::math::*;
@@ -7,6 +8,10 @@ use std::{fs, io};
 
 pub fn global_pos(pos: UVec2) -> Vec2 {
   vec2(pos.x as f32, pos.y as f32) * Grid::CELL_SIZE
+}
+
+pub fn entity_sprite_text(world: &hecs::World, entity: hecs::Entity) -> Option<&'static str> {
+  world.get::<&Sprite>(entity).map(|sprite| sprite.into_inner().into()).ok()
 }
 
 pub fn advance_pos_in_direction(pos: UVec2, dir: Direction) -> UVec2 {

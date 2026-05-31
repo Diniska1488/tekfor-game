@@ -25,11 +25,8 @@ pub fn fireball_handler(
 
   // NOTE: Сущность не удалится если она движется в сторону левой или верхней границы.
   //       Пока не знаю как это починить.
-  //
-  // FIXME: Нужно сделать вспомогательную функцию despawn,
-  //        которая будет удалять сущность в том числе и на сетке.
   if !world_grid.move_entity(this_entity, MoveOptions::new(facing_dir)) {
-    let _ = world_grid.despawn(this_entity);
+    let _ = world_grid.despawn_entity(this_entity);
   }
 }
 

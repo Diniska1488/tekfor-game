@@ -171,6 +171,10 @@ impl WorldGrid {
     Self { grid, world }
   }
 
+  pub fn with_world(world: hecs::World) -> Self {
+    Self::new(32, 32, world)
+  }
+
   pub fn width(&self) -> u32 {
     self.grid.width()
   }
@@ -213,19 +217,21 @@ impl WorldGrid {
     ))
   }
 
-  pub fn spawn_horizontal_wall_at(&mut self, pos: UVec2) -> hecs::Entity {
-    self.spawn_wall_at(pos, AssetID::WallHorizontal)
-  }
+  pub fn spawn_wall_at(&mut self, pos: UVec2, id: AssetID) -> hecs::Entity {
+    use AssetID::*;
 
-  pub fn spawn_horizontal_left_edge_wall_at(&mut self, pos: UVec2) -> hecs::Entity {
-    self.spawn_wall_at(pos, AssetID::WallHorizontalLeftEdge)
-  }
+    assert!(matches!(
+      id,
+      WallHorizontal
+        | WallVertical
+        | WallHorizontalLeftEdge
+        | WallHorizontalRightEdge
+        | WallLeftLowerCorner
+        | WallLeftUpperCorner
+        | WallRightLowerCorner
+        | WallRightUpperCorner
+    ));
 
-  pub fn spawn_right_lower_corner_wall_at(&mut self, pos: UVec2) -> hecs::Entity {
-    self.spawn_wall_at(pos, AssetID::WallRightLowerCorner)
-  }
-
-  fn spawn_wall_at(&mut self, pos: UVec2, id: AssetID) -> hecs::Entity {
     self.spawn_entity((Sprite(id), OnGrid, Solid, Position(pos)))
   }
 
@@ -260,32 +266,27 @@ impl WorldGrid {
     ))
   }
 
-  pub fn spawn_pressure_plate(
-    &mut self,
-    pos: UVec2,
-    linked_entity: Option<hecs::Entity>,
-  ) -> hecs::Entity {
-    self.spawn_entity((
-      Sprite(AssetID::PressurePlate),
-      OnGrid,
-      Position(pos),
-      Tickable(Interactable {
-        linked_entity,
-        handler_kind: InteractableHandlerKind::PressurePlate,
-      }),
-    ))
+  pub fn spawn_pressure_plate(&mut self, pos: UVec2) -> hecs::Entity {
+    self.spawn_entity((Sprite(AssetID::PressurePlate), OnGrid, Position(pos)))
   }
 
-  pub fn spawn_door_at(&mut self, pos: UVec2) -> hecs::Entity {
+  pub fn spawn_door_at(&mut self, pos: UVec2, is_open: bool) -> hecs::Entity {
     self.spawn_entity((
       StatefulObjectKind::Door,
-      Sprite(AssetID::DoorClosed),
+      Sprite(if is_open { AssetID::DoorOpen } else { AssetID::DoorClosed }),
       OnGrid,
       Closed,
       Solid,
       Position(pos),
       Interactable { linked_entity: None, handler_kind: InteractableHandlerKind::Door },
     ))
+  }
+
+  pub fn despawn_entity(&mut self, entity: hecs::Entity) -> Result<(), hecs::NoSuchEntity> {
+    if let Ok(pos) = self.get::<&Position>(entity).map(|pos| pos.into_inner()) {
+      self.remove_from_cell(entity, pos.x, pos.y);
+    };
+    self.despawn(entity)
   }
 
   pub fn move_entity(&mut self, entity: hecs::Entity, opts: MoveOptions) -> bool {
@@ -387,6 +388,12 @@ impl WorldGrid {
     let _ = self.world.insert_one(entity, Animation::new(AnimationKind::Move { start, end }));
 
     true
+  }
+}
+
+impl Default for WorldGrid {
+  fn default() -> Self {
+    Self::with_world(hecs::World::new())
   }
 }
 

@@ -22,7 +22,7 @@ pub struct Gameplay {
 impl Gameplay {
   pub fn with_world(world: hecs::World) -> Self {
     // TODO: Генерировать сетку динамически
-    let mut world_grid = WorldGrid::new(32, 32, world);
+    let mut world_grid = WorldGrid::with_world(world);
 
     let player_entity = world_grid
       .query_mut::<(&Player, hecs::Entity)>()
@@ -74,8 +74,8 @@ impl Gameplay {
 
   pub fn update(&mut self) {
     update_sprites(&self.world_grid);
-    update_animations(&mut self.world_grid);
 
+    let is_any_animation_finished = update_animations(&mut self.world_grid);
     let is_any_action_started = self.process_actions();
 
     if is_any_action_started {

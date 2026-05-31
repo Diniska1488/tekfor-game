@@ -3,7 +3,7 @@ use crate::resources::AssetID;
 use crate::serialize::*;
 use crate::states::menu::Menu;
 use crate::systems::draw::draw_sprites;
-use crate::{Direction, Game, GameState, Grid};
+use crate::{Direction, Game, GameState, Grid, WorldGrid, utils};
 
 use egui_macroquad::egui;
 use strum::IntoEnumIterator;
@@ -12,76 +12,44 @@ use macroquad::logging as log;
 use macroquad::prelude::*;
 
 use std::fs;
-use std::ops::{Deref, DerefMut};
 
-type ComponentAdder = Box<dyn Fn(&mut hecs::EntityBuilder)>;
+type ComponentAdder = Box<dyn Fn(&mut hecs::World, hecs::Entity)>;
 
 pub struct Editor {
   level_path: String,
-  world: hecs::World,
-  component_id: ComponentID,
-  component_adders: Vec<ComponentAdder>,
-  should_add_component: bool,
-  inner_state: InnerState,
-}
-
-pub struct InnerState {
+  world_grid: WorldGrid,
   cursor_pos: UVec2,
   selected_entity: Option<hecs::Entity>,
-  facing_dir: Direction,
+  component_id: Option<ComponentID>,
+  component_adder: Option<ComponentAdder>,
+  should_add_component: bool,
+  allow_ui_to_capture_keyboard: bool,
+  is_in_linkage_mode: bool,
   asset_id: AssetID,
-  z_index: u32,
-  stateful_object_kind: StatefulObjectKind,
-  interactable_handler_kind: InteractableHandlerKind,
-}
-
-impl Default for InnerState {
-  fn default() -> Self {
-    Self {
-      cursor_pos: UVec2::ZERO,
-      selected_entity: None,
-      facing_dir: Direction::North,
-      asset_id: AssetID::Dummy,
-      z_index: 0,
-      stateful_object_kind: StatefulObjectKind::Door,
-      interactable_handler_kind: InteractableHandlerKind::Door,
-    }
-  }
-}
-
-impl Deref for Editor {
-  type Target = InnerState;
-
-  fn deref(&self) -> &Self::Target {
-    &self.inner_state
-  }
-}
-
-impl DerefMut for Editor {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.inner_state
-  }
+  /// Информация о компонентах, которая будет затем использоваться для конструирования компонента.
+  component_info: ComponentInfo,
 }
 
 impl Editor {
   pub fn new() -> Self {
     Self {
       level_path: String::new(),
-      world: hecs::World::new(),
-      component_id: ComponentID::Sprite,
-      component_adders: Vec::new(),
+      world_grid: WorldGrid::default(),
+      cursor_pos: UVec2::ZERO,
+      selected_entity: None,
+      component_id: None,
+      component_adder: None,
       should_add_component: false,
-      inner_state: InnerState::default(),
+      allow_ui_to_capture_keyboard: false,
+      is_in_linkage_mode: false,
+      asset_id: AssetID::Dummy,
+      component_info: ComponentInfo::default(),
     }
-  }
-
-  pub fn cursor_pos(&self) -> UVec2 {
-    self.cursor_pos
   }
 
   pub fn draw(&self, state: &Game) {
     state.with_camera(None, |state| {
-      draw_sprites(&self.world, &state.asset_manager);
+      draw_sprites(&self.world_grid, &state.asset_manager);
 
       self.draw_cursor();
     });
@@ -103,7 +71,7 @@ impl Editor {
           egui::TextEdit::singleline(&mut self.level_path).hint_text("Level path").show(ui);
 
           if ui.button("Save").clicked() {
-            let bytes = serialize_as_binary(&self.world)?;
+            let bytes = serialize_as_binary(&self.world_grid)?;
 
             fs::write(&self.level_path, bytes)?;
           }
@@ -111,7 +79,8 @@ impl Editor {
           if ui.button("Load").clicked() {
             let bytes = fs::read(&self.level_path)?;
 
-            self.world = deserialize_from_binary(&bytes)?;
+            let world = deserialize_from_binary(&bytes)?;
+            self.world_grid = WorldGrid::with_world(world);
           }
           Ok::<(), anyhow::Error>(())
         });
@@ -120,53 +89,15 @@ impl Editor {
           log::error!("{}", err);
         }
 
-        let selected_text: &'static str = self.component_id.into();
+        self.draw_current_entity_ui(ui);
+        self.draw_component_ui(ui);
+        self.draw_asset_ui(ui);
 
-        let available_components =
-          ComponentID::iter().filter(|comp_id| is_available_in_level_editor(*comp_id));
-
-        ui.horizontal(|ui| {
-          egui::ComboBox::from_label("Component").selected_text(selected_text).show_ui(ui, |ui| {
-            for comp_id in available_components {
-              let text: &'static str = comp_id.into();
-
-              ui.selectable_value(&mut self.component_id, comp_id, text);
-            }
-          });
-
-          self.should_add_component = ui.button("Add").clicked();
-        });
-
-        match self.component_id {
-          ComponentID::Interactable | ComponentID::Tickable => self.interactable_ui(ui),
-          ComponentID::Sprite => self.sprite_ui(ui),
-          ComponentID::StatefulObjectKind => self.stateful_ui(ui),
-          ComponentID::ZIndex => self.z_index_ui(ui),
-          ComponentID::Facing => self.facing_ui(ui),
-          ComponentID::Pushable => self.try_add_component(Pushable),
-          ComponentID::Movable => self.try_add_component(Movable),
-          ComponentID::Closed => self.try_add_component(Closed),
-          ComponentID::Solid => self.try_add_component(Solid),
-          _ => (),
-        };
-
-        if !self.component_adders.is_empty() && ui.button("Spawn entity").clicked() {
-          let mut builder = hecs::EntityBuilder::new();
-
-          for adder in self.component_adders.iter() {
-            adder(&mut builder);
-          }
-
-          builder.add_bundle((Position(self.cursor_pos), OnGrid));
-
-          let entity = self.world.spawn(builder.build());
-
-          log::debug!("Spawned entity via level editor: {:?}", entity);
-
-          self.component_adders.clear();
-        }
+        ui.separator();
 
         ui.label(format!("Position: x: {}, y: {}", self.cursor_pos.x, self.cursor_pos.y));
+        ui.checkbox(&mut self.allow_ui_to_capture_keyboard, "Allow ui to capture keyboard")
+          .on_hover_text("Might be useful when is tired of moving cursor away from UI");
 
         None
       })
@@ -176,24 +107,23 @@ impl Editor {
   }
 
   pub fn update(&mut self, ui_wants_input: bool) {
-    if ui_wants_input {
+    self.try_add_component();
+
+    if ui_wants_input && self.allow_ui_to_capture_keyboard {
       return;
     }
 
     self.update_input();
   }
 
-  fn draw_cursor(&self) {
-    let x = self.cursor_pos.x as f32 * Grid::CELL_SIZE;
-    let y = self.cursor_pos.y as f32 * Grid::CELL_SIZE;
-
-    draw_rectangle_lines(x, y, Grid::CELL_SIZE, Grid::CELL_SIZE, 2.0, WHITE);
-  }
-
   fn update_input(&mut self) {
     let Some(key_pressed) = get_last_key_pressed() else {
       return;
     };
+
+    if key_pressed == KeyCode::Backspace {
+      self.try_despawn_entity_under_cursor()
+    }
 
     let dir = match key_pressed {
       KeyCode::W => Direction::North,
@@ -204,99 +134,224 @@ impl Editor {
     };
 
     self.cursor_pos = crate::utils::advance_pos_in_direction(self.cursor_pos, dir);
+    self.selected_entity = self.last_entity_under_cursor();
   }
 
-  fn interactable_ui(&mut self, ui: &mut egui::Ui) {
-    let selected_text = format!("{:?}", self.selected_entity);
+  fn last_entity_under_cursor(&self) -> Option<hecs::Entity> {
+    let cell_entities = self.world_grid.get_cell(self.cursor_pos.x, self.cursor_pos.y)?;
+    cell_entities.last().copied()
+  }
 
-    let cursor_pos = self.cursor_pos;
+  fn try_add_component(&mut self) {
+    if self.component_id.is_none() || !self.should_add_component {
+      return;
+    }
 
-    let entities_under_cursor: Vec<hecs::Entity> = self
-      .world
-      .query_mut::<(&Position, hecs::Entity)>()
-      .into_iter()
-      .filter_map(|(pos, ent)| (pos.into_inner() == cursor_pos).then_some(ent))
-      .collect();
+    if let Some((entity, comp)) = self.selected_entity.zip(self.component_adder.take()) {
+      comp(&mut self.world_grid, entity);
+    }
+  }
 
-    egui::ComboBox::from_label("Entity to link").selected_text(selected_text).show_ui(ui, |ui| {
-      ui.selectable_value(&mut self.selected_entity, None, "None");
+  fn try_despawn_entity_under_cursor(&mut self) {
+    if let Some(entity) = self.selected_entity {
+      let _ = self.world_grid.despawn_entity(entity);
 
-      for entity in entities_under_cursor {
-        let text = format!("{:?}", entity);
+      self.selected_entity = self.last_entity_under_cursor();
+    }
+  }
 
-        ui.selectable_value(&mut self.selected_entity, Some(entity), text);
+  fn draw_cursor(&self) {
+    let x = self.cursor_pos.x as f32 * Grid::CELL_SIZE;
+    let y = self.cursor_pos.y as f32 * Grid::CELL_SIZE;
+
+    let color = if self.is_in_linkage_mode { GREEN } else { WHITE };
+
+    draw_rectangle_lines(x, y, Grid::CELL_SIZE, Grid::CELL_SIZE, 2.0, color);
+  }
+
+  fn draw_current_entity_ui(&mut self, ui: &mut egui::Ui) {
+    let Some(cell_entities) = self.world_grid.get_cell(self.cursor_pos.x, self.cursor_pos.y) else {
+      return;
+    };
+
+    let selected_text: &'static str = self
+      .selected_entity
+      .and_then(|entity| utils::entity_sprite_text(&self.world_grid, entity))
+      .unwrap_or("...");
+
+    egui::ComboBox::from_label("Current entity").selected_text(selected_text).show_ui(ui, |ui| {
+      for &entity in cell_entities {
+        let Some(text) = utils::entity_sprite_text(&self.world_grid, entity) else {
+          continue;
+        };
+
+        let entity_mut_ref = match self.is_in_linkage_mode {
+          true => &mut self.component_info.linked_entity,
+          false => &mut self.selected_entity,
+        };
+
+        ui.selectable_value(entity_mut_ref, Some(entity), text);
+      }
+    });
+  }
+
+  fn draw_component_ui(&mut self, ui: &mut egui::Ui) {
+    ui.horizontal(|ui| {
+      let selected_text: &'static str = self.component_id.map(Into::into).unwrap_or("...");
+
+      egui::ComboBox::from_label("Component").selected_text(selected_text).show_ui(ui, |ui| {
+        ui.selectable_value(
+          &mut self.component_id,
+          Some(ComponentID::Interactable),
+          "Interactable",
+        );
+        ui.selectable_value(&mut self.component_id, Some(ComponentID::Tickable), "Tickable");
+        ui.selectable_value(&mut self.component_id, Some(ComponentID::ZIndex), "Z index");
+        ui.selectable_value(&mut self.component_id, Some(ComponentID::Facing), "Facing");
+      });
+
+      if self.component_id.is_some() && self.selected_entity.is_some() {
+        self.should_add_component = ui.button("Add").clicked();
       }
     });
 
-    let selected_text: &'static str = self.interactable_handler_kind.into();
+    let Some(comp_id) = self.component_id else {
+      return;
+    };
+
+    match comp_id {
+      ComponentID::ZIndex => self.draw_z_index_ui(ui),
+      ComponentID::Interactable => self.draw_interactable_ui(ui),
+      ComponentID::Tickable => self.draw_tickable_ui(ui),
+      ComponentID::Facing => self.draw_facing_ui(ui),
+      ComponentID::Animation
+      | ComponentID::ActionQueue
+      | ComponentID::StatefulObjectKind
+      | ComponentID::Position
+      | ComponentID::Sprite
+      | ComponentID::Closed
+      | ComponentID::Movable
+      | ComponentID::Pushable
+      | ComponentID::OnGrid
+      | ComponentID::Solid
+      | ComponentID::Player => unreachable!(),
+    }
+  }
+
+  fn draw_asset_ui(&mut self, ui: &mut egui::Ui) {
+    let selected_text: &'static str = self.asset_id.into();
+
+    egui::ComboBox::from_label("Asset").selected_text(selected_text).show_ui(ui, |ui| {
+      for asset_id in AssetID::iter() {
+        let text: &'static str = asset_id.into();
+
+        ui.selectable_value(&mut self.asset_id, asset_id, text);
+      }
+    });
+
+    ui.horizontal(|ui| {
+      if self.asset_id != AssetID::Dummy && ui.button("Spawn entity").clicked() {
+        let entity = match self.asset_id {
+          AssetID::Player => self.world_grid.spawn_player_at(self.cursor_pos),
+          AssetID::DoorClosed => self.world_grid.spawn_door_at(self.cursor_pos, false),
+          AssetID::DoorOpen => self.world_grid.spawn_door_at(self.cursor_pos, true),
+          wall_asset_id @ (AssetID::WallHorizontal
+          | AssetID::WallHorizontalLeftEdge
+          | AssetID::WallHorizontalRightEdge
+          | AssetID::WallLeftLowerCorner
+          | AssetID::WallLeftUpperCorner
+          | AssetID::WallRightLowerCorner
+          | AssetID::WallRightUpperCorner
+          | AssetID::WallVertical) => self.world_grid.spawn_wall_at(self.cursor_pos, wall_asset_id),
+          AssetID::PressurePlate => self.world_grid.spawn_pressure_plate(self.cursor_pos),
+          AssetID::Crate => self.world_grid.spawn_crate_at(self.cursor_pos),
+          AssetID::Dummy => unreachable!(),
+        };
+
+        self.selected_entity.replace(entity);
+      }
+
+      if self.selected_entity.is_some() && ui.button("Despawn entity").clicked() {
+        self.try_despawn_entity_under_cursor();
+      }
+    });
+  }
+
+  fn draw_interactable_tickable_ui(&mut self, ui: &mut egui::Ui) {
+    ui.checkbox(&mut self.is_in_linkage_mode, "Linkage mode");
+
+    let entity_text = self
+      .component_info
+      .linked_entity
+      .and_then(|entity| utils::entity_sprite_text(&self.world_grid, entity))
+      .unwrap_or("None");
+
+    ui.label(format!("Linked entity: {}", entity_text));
+
+    let selected_text: &'static str =
+      self.component_info.interactable_handler_kind.map(Into::into).unwrap_or("...");
 
     egui::ComboBox::from_label("Handler kind").selected_text(selected_text).show_ui(ui, |ui| {
       for kind in InteractableHandlerKind::iter() {
         let text: &'static str = kind.into();
 
-        ui.selectable_value(&mut self.interactable_handler_kind, kind, text);
+        ui.selectable_value(&mut self.component_info.interactable_handler_kind, Some(kind), text);
       }
     });
   }
 
-  fn sprite_ui(&mut self, ui: &mut egui::Ui) {
-    let selected_text: &'static str = self.asset_id.into();
+  fn draw_interactable_ui(&mut self, ui: &mut egui::Ui) {
+    self.draw_interactable_tickable_ui(ui);
 
-    egui::ComboBox::from_label("Asset ID").selected_text(selected_text).show_ui(ui, |ui| {
-      for id in AssetID::iter() {
-        let text: &'static str = id.into();
-
-        ui.selectable_value(&mut self.asset_id, id, text);
-      }
-    });
-
-    self.try_add_component(Sprite(self.asset_id));
+    if let Some(handler_kind) = self.component_info.interactable_handler_kind {
+      self.try_update_component_adder(Interactable {
+        linked_entity: self.component_info.linked_entity,
+        handler_kind,
+      });
+    }
   }
 
-  fn stateful_ui(&mut self, ui: &mut egui::Ui) {
-    let selected_text: &'static str = self.asset_id.into();
+  fn draw_tickable_ui(&mut self, ui: &mut egui::Ui) {
+    self.draw_interactable_tickable_ui(ui);
 
-    egui::ComboBox::from_label("Stateful object kind").selected_text(selected_text).show_ui(
-      ui,
-      |ui| {
-        for stateful in StatefulObjectKind::iter() {
-          let text: &'static str = stateful.into();
-
-          ui.selectable_value(&mut self.stateful_object_kind, stateful, text);
-        }
-      },
-    );
-
-    self.try_add_component(self.stateful_object_kind);
+    if let Some(handler_kind) = self.component_info.interactable_handler_kind {
+      self.try_update_component_adder(Tickable(Interactable {
+        linked_entity: self.component_info.linked_entity,
+        handler_kind,
+      }));
+    }
   }
 
-  fn z_index_ui(&mut self, ui: &mut egui::Ui) {
-    ui.add(egui::Slider::new(&mut self.z_index, 0..=100));
+  fn draw_z_index_ui(&mut self, ui: &mut egui::Ui) {
+    ui.add(egui::Slider::new(&mut self.component_info.z_index, 0..=100));
 
-    self.try_add_component(ZIndex(self.z_index));
+    self.try_update_component_adder(ZIndex(self.component_info.z_index));
   }
 
-  fn facing_ui(&mut self, ui: &mut egui::Ui) {
-    let selected_text: &'static str = self.facing_dir.into();
+  fn draw_facing_ui(&mut self, ui: &mut egui::Ui) {
+    let selected_text: &'static str =
+      self.component_info.facing_dir.map(Into::into).unwrap_or("...");
 
     egui::ComboBox::from_label("Direction").selected_text(selected_text).show_ui(ui, |ui| {
       for dir in Direction::iter() {
         let text: &'static str = dir.into();
 
-        ui.selectable_value(&mut self.facing_dir, dir, text);
+        ui.selectable_value(&mut self.component_info.facing_dir, Some(dir), text);
       }
     });
 
-    self.try_add_component(Facing(self.facing_dir));
+    if let Some(facing_dir) = self.component_info.facing_dir {
+      self.try_update_component_adder(Facing(facing_dir));
+    }
   }
 
-  fn try_add_component<C: hecs::Component + Clone>(&mut self, component: C) {
+  fn try_update_component_adder<C: hecs::Component + Clone>(&mut self, component: C) {
     if !self.should_add_component {
       return;
     }
 
-    self.component_adders.push(Box::new(move |builder| {
-      builder.add(component.clone());
+    self.component_adder.replace(Box::new(move |world, entity| {
+      let _ = world.insert_one(entity, component.clone());
     }));
   }
 }
@@ -307,19 +362,10 @@ impl Default for Editor {
   }
 }
 
-fn is_available_in_level_editor(comp_id: ComponentID) -> bool {
-  matches!(
-    comp_id,
-    ComponentID::Closed
-      | ComponentID::Facing
-      | ComponentID::Movable
-      | ComponentID::Interactable
-      | ComponentID::Player
-      | ComponentID::Pushable
-      | ComponentID::Solid
-      | ComponentID::Sprite
-      | ComponentID::Tickable
-      | ComponentID::StatefulObjectKind
-      | ComponentID::ZIndex
-  )
+#[derive(Default)]
+struct ComponentInfo {
+  linked_entity: Option<hecs::Entity>,
+  interactable_handler_kind: Option<InteractableHandlerKind>,
+  facing_dir: Option<Direction>,
+  z_index: u32,
 }
