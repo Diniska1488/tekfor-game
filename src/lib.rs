@@ -9,6 +9,7 @@ pub mod utils;
 use components::*;
 use resources::{AssetID, AssetManager};
 use serde::{Deserialize, Serialize};
+use serialize::WorldInfo;
 use strum::{EnumIter, IntoStaticStr};
 
 use states::editor::Editor;
@@ -104,14 +105,37 @@ impl Grid {
       cells.push(Vec::with_capacity(1));
     }
 
-    log::debug!("Allocated {} bytes for grid", capacity * size_of::<Vec<hecs::Entity>>());
-
     let mut this = Self { cells, width, height };
 
     for (pos, entity) in world.query_mut::<(&Position, hecs::Entity)>() {
       this.add_to_cell(entity, pos.x, pos.y);
     }
     this
+  }
+
+  pub fn resize(&mut self, new_width: u32, new_height: u32) {
+    let new_capacity = (new_width * new_height) as usize;
+    let old_capacity = self.cells.capacity();
+
+    match new_capacity.overflowing_sub(old_capacity) {
+      (to_alloc, false) => {
+        self.cells.reserve(to_alloc);
+
+        for _ in 0..to_alloc {
+          self.cells.push(Vec::with_capacity(1));
+        }
+      }
+      (_, true) => {
+        let to_trunc = old_capacity - new_capacity;
+
+        self.cells.truncate(to_trunc);
+        // NOTE: Возможно этот вызов избыточен.
+        self.cells.shrink_to_fit();
+      }
+    };
+
+    self.width = new_width;
+    self.height = new_height;
   }
 
   pub fn width(&self) -> u32 {
@@ -152,14 +176,10 @@ pub struct WorldGrid {
 }
 
 impl WorldGrid {
-  pub fn new(width: u32, height: u32, mut world: hecs::World) -> Self {
-    let grid = Grid::new(width, height, &mut world);
+  pub fn new(info: &WorldInfo, mut world: hecs::World) -> Self {
+    let grid = Grid::new(info.width, info.height, &mut world);
 
     Self { grid, world }
-  }
-
-  pub fn with_world(world: hecs::World) -> Self {
-    Self::new(32, 32, world)
   }
 
   pub fn width(&self) -> u32 {
@@ -168,6 +188,10 @@ impl WorldGrid {
 
   pub fn height(&self) -> u32 {
     self.grid.height()
+  }
+
+  pub fn resize(&mut self, new_width: u32, new_height: u32) {
+    self.grid.resize(new_width, new_height);
   }
 
   pub fn get_cell(&self, x: u32, y: u32) -> Option<&[hecs::Entity]> {
@@ -401,7 +425,7 @@ impl WorldGrid {
 
 impl Default for WorldGrid {
   fn default() -> Self {
-    Self::with_world(hecs::World::new())
+    Self::new(&WorldInfo::default(), hecs::World::new())
   }
 }
 

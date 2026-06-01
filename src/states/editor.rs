@@ -15,6 +15,7 @@ use std::fs;
 pub struct Editor {
   level_path: String,
   world_grid: WorldGrid,
+  world_info: WorldInfo,
   cursor_pos: UVec2,
   selected_entity: Option<hecs::Entity>,
   asset_id: Option<AssetID>,
@@ -31,6 +32,7 @@ impl Editor {
     Self {
       level_path: String::new(),
       world_grid: WorldGrid::default(),
+      world_info: WorldInfo::default(),
       cursor_pos: UVec2::ZERO,
       selected_entity: None,
       asset_id: None,
@@ -72,7 +74,7 @@ impl Editor {
           self.should_capture_keyboard = resp.clicked() || resp.changed();
 
           if ui.button("Save").clicked() {
-            let bytes = serialize_as_binary(&self.world_grid)?;
+            let bytes = serialize_world_info(&mut self.world_info, &self.world_grid)?;
 
             fs::write(&self.level_path, bytes)?;
           }
@@ -80,8 +82,8 @@ impl Editor {
           if ui.button("Load").clicked() {
             let bytes = fs::read(&self.level_path)?;
 
-            let world = deserialize_from_binary(&bytes)?;
-            self.world_grid = WorldGrid::with_world(world);
+            let (info, world) = deserialize_world_info(&bytes)?;
+            self.world_grid = WorldGrid::new(&info, world);
           }
           Ok::<(), anyhow::Error>(())
         });
@@ -90,10 +92,27 @@ impl Editor {
           log::error!("{}", err);
         }
 
-        self.draw_current_entity_ui(ui);
-        self.draw_asset_ui(ui);
+        let is_world_width_changed =
+          draw_drag_value_ui("World width", &mut self.world_info.width, ui).changed();
+        let is_world_height_changed =
+          draw_drag_value_ui("World height", &mut self.world_info.height, ui).changed();
+
+        let should_resize_grid = is_world_width_changed || is_world_height_changed;
+
+        if should_resize_grid {
+          self.world_grid.resize(self.world_info.width, self.world_info.height);
+        }
 
         ui.separator();
+
+        let is_in_bounds = self.world_grid.get_cell(self.cursor_pos.x, self.cursor_pos.y).is_some();
+
+        if is_in_bounds {
+          self.draw_current_entity_ui(ui);
+          self.draw_asset_ui(ui);
+
+          ui.separator();
+        }
 
         ui.label(format!("Position: x: {}, y: {}", self.cursor_pos.x, self.cursor_pos.y));
 
@@ -312,6 +331,20 @@ fn draw_direction_ui(label: &str, dir: &mut Option<Direction>, ui: &mut egui::Ui
       ui.selectable_value(dir, Some(curr_dir), text);
     }
   });
+}
+
+fn draw_drag_value_ui<N>(label: &str, value: &mut N, ui: &mut egui::Ui) -> egui::Response
+where
+  N: egui::emath::Numeric,
+{
+  ui.horizontal(|ui| {
+    let resp = ui.add(egui::DragValue::new(value));
+    {
+      ui.label(label);
+    }
+    resp
+  })
+  .inner
 }
 
 impl Default for Editor {

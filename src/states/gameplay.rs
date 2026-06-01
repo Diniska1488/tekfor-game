@@ -1,4 +1,5 @@
 use crate::components::*;
+use crate::serialize::WorldInfo;
 use crate::states::menu::Menu;
 use crate::{Direction, Game, GameState, WorldGrid, scripting, utils};
 
@@ -21,9 +22,8 @@ pub struct Gameplay {
 }
 
 impl Gameplay {
-  pub fn with_world(world: hecs::World) -> Self {
-    // TODO: Генерировать сетку динамически
-    let mut world_grid = WorldGrid::with_world(world);
+  pub fn new(info: WorldInfo, world: hecs::World) -> Self {
+    let mut world_grid = WorldGrid::new(&info, world);
 
     let player_entity = world_grid
       .query_mut::<(&Player, hecs::Entity)>()

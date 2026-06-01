@@ -3,18 +3,38 @@ use crate::components::*;
 use serde::{Deserialize, Serialize};
 use strum::{EnumIter, IntoStaticStr};
 
-pub fn serialize_as_binary(world: &hecs::World) -> bincode::Result<Vec<u8>> {
-  let mut buf = Vec::new();
-
-  let mut serializer = bincode::Serializer::new(&mut buf, bincode::DefaultOptions::new());
+pub fn serialize_world_info(info: &mut WorldInfo, world: &hecs::World) -> bincode::Result<Vec<u8>> {
+  let mut serializer =
+    bincode::Serializer::new(&mut info.world_bytes, bincode::DefaultOptions::new());
   hecs::serialize::column::serialize(world, &mut WorldContextSerialize, &mut serializer)?;
 
-  Ok(buf)
+  bincode::serialize(&info)
 }
 
-pub fn deserialize_from_binary(buf: &[u8]) -> bincode::Result<hecs::World> {
-  let mut deserializer = bincode::Deserializer::with_reader(buf, bincode::DefaultOptions::new());
-  hecs::serialize::column::deserialize(&mut WorldContextDeserialize::default(), &mut deserializer)
+pub fn deserialize_world_info(bytes: &[u8]) -> bincode::Result<(WorldInfo, hecs::World)> {
+  let info: WorldInfo = bincode::deserialize(bytes)?;
+
+  let mut deserializer =
+    bincode::Deserializer::with_reader(&*info.world_bytes, bincode::DefaultOptions::new());
+  let world = hecs::serialize::column::deserialize(
+    &mut WorldContextDeserialize::default(),
+    &mut deserializer,
+  )?;
+
+  Ok((info, world))
+}
+
+#[derive(Default, Serialize, Deserialize)]
+pub struct WorldInfo {
+  pub width: u32,
+  pub height: u32,
+  world_bytes: Vec<u8>,
+}
+
+impl WorldInfo {
+  pub fn new(width: u32, height: u32) -> Self {
+    Self { width, height, world_bytes: Vec::new() }
+  }
 }
 
 #[derive(EnumIter, IntoStaticStr, Serialize, Deserialize, PartialEq, Clone, Copy)]

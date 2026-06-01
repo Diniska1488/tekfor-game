@@ -1,5 +1,5 @@
 use crate::resources::Settings;
-use crate::serialize::deserialize_from_binary;
+use crate::serialize::*;
 use crate::{GameState, utils};
 
 use crate::states::editor::Editor;
@@ -60,9 +60,9 @@ impl Menu {
       && self.should_start_level
     {
       let bytes = fs::read(level_path).unwrap();
-      let world = deserialize_from_binary(&bytes).unwrap();
+      let (info, world) = deserialize_world_info(&bytes).unwrap();
 
-      let gameplay = Box::new(Gameplay::with_world(world));
+      let gameplay = Box::new(Gameplay::new(info, world));
 
       return Some(GameState::Gameplay(gameplay));
     }
