@@ -17,7 +17,6 @@ use states::gameplay::{Gameplay, MoveOptions};
 use states::menu::Menu;
 
 use macroquad::experimental::camera::mouse::Camera;
-use macroquad::logging as log;
 use macroquad::prelude::*;
 
 use std::ops::{Deref, DerefMut};

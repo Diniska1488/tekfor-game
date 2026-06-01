@@ -83,7 +83,9 @@ impl Editor {
             let bytes = fs::read(&self.level_path)?;
 
             let (info, world) = deserialize_world_info(&bytes)?;
+
             self.world_grid = WorldGrid::new(&info, world);
+            self.world_info = info;
           }
           Ok::<(), anyhow::Error>(())
         });
