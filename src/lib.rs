@@ -34,18 +34,10 @@ impl Game {
     Ok(Self { asset_manager, camera })
   }
 
-  pub fn with_camera(&self, grid_size: Option<(u32, u32)>, f: impl Fn(&Game)) {
+  pub fn with_camera(&self, f: impl Fn(&Game)) {
     let mut camera: Camera2D = (&self.camera).into();
 
     camera.zoom.y *= -1.0;
-
-    // NOTE: Потенциально бесполезный код.
-    //
-    // Нужно сделать уровни, и уже только потом решать.
-    if let Some((grid_width, grid_height)) = grid_size {
-      camera.target.x += Grid::CELL_SIZE * (grid_width as f32 / 2.0);
-      camera.target.y += Grid::CELL_SIZE * (grid_height as f32 / 2.0);
-    }
 
     set_camera(&camera);
     {
@@ -54,11 +46,7 @@ impl Game {
     set_default_camera();
   }
 
-  pub fn update_camera(&mut self, ui_wants_pointer_input: bool) {
-    if ui_wants_pointer_input {
-      return;
-    }
-
+  pub fn update_camera(&mut self) {
     let (_, mouse_wheel_y) = mouse_wheel();
 
     if mouse_wheel_y != 0.0 {

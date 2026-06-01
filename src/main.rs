@@ -31,12 +31,14 @@ async fn main() -> anyhow::Result<()> {
       ui_wants_pointer_input = egui_ctx.wants_pointer_input();
       ui_wants_keyboard_input = egui_ctx.wants_keyboard_input();
 
-      egui_ctx.set_pixels_per_point(2.5);
+      egui_ctx.set_pixels_per_point(screen_dpi_scale() + 0.5);
 
       draw_ui(&mut current_state, &lua, egui_ctx);
     });
 
-    state.update_camera(ui_wants_pointer_input);
+    if !ui_wants_pointer_input {
+      state.update_camera();
+    }
 
     let ui_wants_input = ui_wants_pointer_input || ui_wants_keyboard_input;
     update_and_draw(&mut current_state, &state, ui_wants_input);

@@ -44,7 +44,7 @@ impl Editor {
   }
 
   pub fn draw(&self, state: &Game) {
-    state.with_camera(None, |state| {
+    state.with_camera(|state| {
       draw_sprites(&self.world_grid, &state.asset_manager);
 
       self.draw_cursor();
