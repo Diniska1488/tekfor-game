@@ -114,16 +114,13 @@ impl Gameplay {
 
     update_death_causers(&mut self.world_grid);
     update_tickable(&mut self.world_grid);
+    update_death_causers(&mut self.world_grid);
   }
 
   fn process_actions(&mut self) -> bool {
     let mut actions = Vec::new();
 
     for (queue, entity) in self.world_grid.query::<(&mut ActionQueue, hecs::Entity)>().iter() {
-      if self.world_grid.satisfies::<&Animation>(entity) {
-        continue;
-      }
-
       if let Some(action_kind) = queue.pop_front() {
         actions.push((action_kind, entity));
       }

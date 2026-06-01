@@ -207,6 +207,7 @@ impl WorldGrid {
     self.spawn_entity((
       Sprite(AssetID::Player),
       ZIndex(1),
+      Weighted,
       Movable,
       OnGrid,
       Player,
@@ -225,6 +226,7 @@ impl WorldGrid {
       Sprite(AssetID::Crate),
       ZIndex(1),
       OnGrid,
+      Weighted,
       Solid,
       Movable,
       Pushable,

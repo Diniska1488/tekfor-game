@@ -37,6 +37,7 @@ pub enum ComponentID {
   Bouncing,
   CausesDeath,
   Mortal,
+  Weighted,
 }
 
 macro_rules! impl_serialize_context {
@@ -152,6 +153,7 @@ impl_serialize_context!(
   ComponentID::Bouncing => Bouncing,
   ComponentID::CausesDeath => CausesDeath,
   ComponentID::Mortal => Mortal,
+  ComponentID::Weighted => Weighted,
 );
 
 impl_deserialize_context!(
@@ -174,6 +176,7 @@ impl_deserialize_context!(
   ComponentID::Bouncing => Bouncing,
   ComponentID::CausesDeath => CausesDeath,
   ComponentID::Mortal => Mortal,
+  ComponentID::Weighted => Weighted,
 );
 
 pub(super) mod uvec2_serde {

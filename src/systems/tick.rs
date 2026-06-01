@@ -85,9 +85,9 @@ pub fn pressure_plate_handler(
     return;
   };
 
-  let is_anything_standing_on_plate = this_cell_entities.iter().any(|&ent| {
-    world_grid.satisfies::<hecs::Without<&Solid, &Animation>>(ent) && ent != this_entity
-  });
+  let is_anything_standing_on_plate = this_cell_entities
+    .iter()
+    .any(|&entity| world_grid.satisfies::<&Weighted>(entity) && entity != this_entity);
 
   let Some(linked_entity) = linked_entity else {
     return;

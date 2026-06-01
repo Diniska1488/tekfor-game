@@ -158,6 +158,9 @@ pub struct OnGrid;
 pub struct Solid;
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct Weighted;
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct CausesDeath;
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
