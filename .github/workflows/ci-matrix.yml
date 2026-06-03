@@ -6,13 +6,12 @@ on:
   pull_request:
 
 jobs:
-  call-reusable:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        runner: [ macos-latest, windows-latest ]
-    steps:
-      - name: Call reusable Rust workflow
-        uses: ./.github/workflows/reusable-rust.yml
-        with:
-          target: ${{ matrix.runner }}
+  macos:
+    uses: ./.github/workflows/reusable-rust.yml
+    with:
+      target: macos-latest
+
+  windows:
+    uses: ./.github/workflows/reusable-rust.yml
+    with:
+      target: windows-latest
