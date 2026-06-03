@@ -4,7 +4,7 @@ use crate::{WorldGrid, utils};
 pub fn update_tickable(world_grid: &mut WorldGrid) {
   let tickable: Vec<(InteractableHandlerKind, _, _)> = world_grid
     .query::<(&Tickable, hecs::Entity)>()
-    .iter()
+    .into_iter()
     .map(|(tickable, entity)| (tickable.handler_kind, entity, tickable.linked_entity))
     .collect();
 
@@ -13,10 +13,8 @@ pub fn update_tickable(world_grid: &mut WorldGrid) {
   }
 }
 
-pub fn update_death_causers(world_grid: &mut WorldGrid) {
-  let mut entities_to_despawn = Vec::new();
-
-  for (_, &pos) in world_grid.query::<(&CausesDeath, &Position)>().iter() {
+pub fn mark_dead(world_grid: &WorldGrid, to_despawn: &mut Vec<hecs::Entity>) {
+  for (_, &pos) in world_grid.query::<(&CausesDeath, &Position)>().into_iter() {
     let Some(cell_entities) = world_grid.get_cell(pos.x, pos.y) else {
       continue;
     };
@@ -26,11 +24,15 @@ pub fn update_death_causers(world_grid: &mut WorldGrid) {
         continue;
       }
 
-      entities_to_despawn.push(entity);
+      to_despawn.push(entity);
     }
   }
+}
 
-  let _ = entities_to_despawn.into_iter().try_for_each(|entity| world_grid.despawn_entity(entity));
+pub fn mark_went_downstairs(world_grid: &WorldGrid, to_despawn: &mut Vec<hecs::Entity>) {
+  to_despawn.extend(
+    world_grid.query::<(&WentDownstairs, hecs::Entity)>().into_iter().map(|(_, entity)| entity),
+  );
 }
 
 pub fn fireball_handler(
@@ -105,9 +107,9 @@ pub fn pressure_plate_handler(
   };
 
   if is_anything_standing_on_plate {
-    let _ = world_grid.remove_one::<Locked>(linked_entity);
+    let _ = world_grid.remove::<(Locked, Obstacle)>(linked_entity);
   } else {
-    let _ = world_grid.insert_one(linked_entity, Locked);
+    let _ = world_grid.insert(linked_entity, (Locked, Obstacle));
   }
 }
 
@@ -145,5 +147,25 @@ pub fn saw_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity, _: Opt
     .map(|(queue, bouncing)| (queue, bouncing.to))
   {
     queue.push_back(ActionKind::Move(MoveOptions::new(dir)));
+  }
+}
+
+pub fn downstairs_handler(
+  world_grid: &mut WorldGrid,
+  this_entity: hecs::Entity,
+  _: Option<hecs::Entity>,
+) {
+  let Some(cell_entities) = world_grid
+    .get::<&Position>(this_entity)
+    .ok()
+    .and_then(|this_pos| world_grid.get_cell(this_pos.x, this_pos.y))
+  else {
+    return;
+  };
+
+  if let Some(&player_at_downstairs) =
+    cell_entities.iter().find(|&&entity| world_grid.satisfies::<&Player>(entity))
+  {
+    let _ = world_grid.insert_one(player_at_downstairs, WentDownstairs);
   }
 }

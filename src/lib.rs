@@ -1,5 +1,5 @@
 pub mod components;
-pub mod lockpicking;
+pub mod lock_picking;
 pub mod resources;
 pub mod scripting;
 pub mod serialize;
@@ -219,12 +219,24 @@ impl WorldGrid {
     entity
   }
 
+  pub fn spawn_downstairs_at(&mut self, pos: UVec2, id: AssetID) -> hecs::Entity {
+    self.spawn_entity((
+      Sprite(id),
+      Downstairs,
+      OnGrid,
+      Position(pos),
+      Tickable(Interactable {
+        linked_entity: None,
+        handler_kind: InteractableHandlerKind::Downstairs,
+      }),
+    ))
+  }
+
   pub fn spawn_saw_at(&mut self, pos: UVec2, from: Direction, to: Direction) -> hecs::Entity {
     self.spawn_entity((
       Sprite(AssetID::Saw),
       Movable,
       OnGrid,
-      Solid,
       Obstacle,
       CausesDeath,
       Position(pos),
@@ -249,7 +261,7 @@ impl WorldGrid {
   }
 
   pub fn spawn_wall_at(&mut self, pos: UVec2, id: AssetID) -> hecs::Entity {
-    self.spawn_entity((Sprite(id), OnGrid, Solid, Obstacle, Position(pos)))
+    self.spawn_entity((Sprite(id), OnGrid, Obstacle, Position(pos)))
   }
 
   pub fn spawn_crate_at(&mut self, pos: UVec2) -> hecs::Entity {
@@ -302,7 +314,6 @@ impl WorldGrid {
     self.spawn_entity((
       Sprite(AssetID::PressurePlate),
       OnGrid,
-      Solid,
       Position(pos),
       Tickable(Interactable {
         linked_entity,
@@ -316,7 +327,6 @@ impl WorldGrid {
       StatefulObjectKind::Door,
       Sprite(if is_locked { AssetID::DoorLocked } else { AssetID::DoorUnlocked }),
       OnGrid,
-      Solid,
       Obstacle,
       Position(pos),
       Interactable { linked_entity: None, handler_kind: InteractableHandlerKind::Door },

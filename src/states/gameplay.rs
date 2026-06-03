@@ -19,6 +19,7 @@ pub struct Gameplay {
   script_path: Option<String>,
   player_entity: Option<hecs::Entity>,
   tick_state: TickState,
+  is_level_finished: bool,
   abyss: Abyss,
 }
 
@@ -37,11 +38,31 @@ impl Gameplay {
       script_path: None,
       player_entity,
       tick_state: TickState::ProcessingLogic,
+      is_level_finished: false,
       abyss: Abyss::default(),
     }
   }
 
   pub fn draw_ui(&mut self, egui_ctx: &egui::Context) -> Option<GameState> {
+    if let state = self.draw_gameplay_ui(egui_ctx)
+      && state.is_some()
+    {
+      return state;
+    }
+
+    if self.is_level_finished {
+      self.draw_level_finished_ui(egui_ctx);
+    }
+    None
+  }
+
+  fn draw_level_finished_ui(&mut self, egui_ctx: &egui::Context) {
+    egui::Window::new("Level finished").resizable(false).show(egui_ctx, |ui| {
+      ui.label("Gratulerer!");
+    });
+  }
+
+  fn draw_gameplay_ui(&mut self, egui_ctx: &egui::Context) -> Option<GameState> {
     egui::Window::new("Gameplay")
       .resizable(false)
       .show(egui_ctx, |ui| {
@@ -78,8 +99,8 @@ impl Gameplay {
 
     match self.tick_state {
       TickState::ProcessingLogic => {
-        self.update_lua(lua)?;
         self.do_logical_tick();
+        self.update_lua(lua)?;
 
         self.tick_state = TickState::WaitingForAction;
       }
@@ -110,17 +131,24 @@ impl Gameplay {
   }
 
   fn do_logical_tick(&mut self) {
-    // Тут можно (и нужно) обновлять логическое состояние мира:
-    // * Нажимные плиты
-    // * Враги
-    // * И т.д.
-
     update_tickable(&mut self.world_grid);
-    update_death_causers(&mut self.world_grid);
+
+    let mut entities_to_despawn = Vec::new();
+
+    mark_dead(&self.world_grid, &mut entities_to_despawn);
+    mark_went_downstairs(&self.world_grid, &mut entities_to_despawn);
+
+    self.is_level_finished = self.world_grid.query_mut::<&WentDownstairs>().into_iter().count() > 0;
+
+    for entity in entities_to_despawn.into_iter() {
+      let _ = self.world_grid.despawn_entity(entity);
+    }
   }
 
   fn update_lua(&mut self, lua: &Lua) -> mlua::Result<()> {
-    let Some(ref path) = self.script_path else { return Ok(()) };
+    let Some(ref path) = self.script_path else {
+      return Ok(());
+    };
 
     match fs::read(path) {
       Ok(bytes) => {

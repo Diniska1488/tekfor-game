@@ -36,6 +36,7 @@ pub enum AssetID {
   WallHorizontalLowerSplit,
   WallVerticalTopEdge,
   WallVerticalBottomEdge,
+  DownstairsHorizontalUpper,
 }
 
 pub struct AssetManager {
@@ -69,12 +70,13 @@ impl AssetManager {
     textures.insert(AssetID::WallHorizontalLowerSplit, load_texture("textures/wall-horizontal-lower-split.png").await?);
     textures.insert(AssetID::WallVerticalTopEdge, load_texture("textures/wall-vertical-top-edge.png").await?);
     textures.insert(AssetID::WallVerticalBottomEdge, load_texture("textures/wall-vertical-bottom-edge.png").await?);
+    textures.insert(AssetID::DownstairsHorizontalUpper, load_texture("textures/downstairs-horizontal-upper.png").await?);
 
     Ok(Self { textures })
   }
 
   pub fn get(&self, id: AssetID) -> Texture2D {
-    self.textures.get(&id).expect("Unknown asset id").clone()
+    self.textures.get(&id).expect("Failed to obtain texture due to unknown asset id").clone()
   }
 }
 

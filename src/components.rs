@@ -1,5 +1,5 @@
 use crate::resources::{AssetID, Settings};
-use crate::systems::tick;
+use crate::systems::tick::*;
 use crate::{Direction, WorldGrid};
 
 use macroquad::math::{UVec2, Vec2};
@@ -128,16 +128,18 @@ pub enum InteractableHandlerKind {
   PressurePlate,
   Door,
   Saw,
+  Downstairs,
 }
 
 impl InteractableHandlerKind {
   pub fn to_fn(self) -> InteractableHandler {
     match self {
-      InteractableHandlerKind::Fireball => tick::fireball_handler,
-      InteractableHandlerKind::FireballThrower => tick::fireball_thrower_handler,
-      InteractableHandlerKind::PressurePlate => tick::pressure_plate_handler,
-      InteractableHandlerKind::Door => tick::door_handler,
-      InteractableHandlerKind::Saw => tick::saw_handler,
+      InteractableHandlerKind::Fireball => fireball_handler,
+      InteractableHandlerKind::FireballThrower => fireball_thrower_handler,
+      InteractableHandlerKind::PressurePlate => pressure_plate_handler,
+      InteractableHandlerKind::Door => door_handler,
+      InteractableHandlerKind::Saw => saw_handler,
+      InteractableHandlerKind::Downstairs => downstairs_handler,
     }
   }
 }
@@ -180,6 +182,12 @@ pub struct Mortal;
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct Player;
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct WentDownstairs;
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct Downstairs;
 
 deref_component!(Position, UVec2);
 deref_component!(ZIndex, u32);

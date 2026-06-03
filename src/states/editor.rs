@@ -258,6 +258,9 @@ impl Editor {
       door_asset_id @ (AssetID::DoorLocked | AssetID::DoorUnlocked) => self.draw_plain_asset_ui(ui, |this| {
         Some(this.world_grid.spawn_door_at(this.cursor_pos, door_asset_id == AssetID::DoorLocked))
       }),
+      downstairs_asset_id @ AssetID::DownstairsHorizontalUpper => self.draw_plain_asset_ui(ui, |this| {
+        Some(this.world_grid.spawn_downstairs_at(this.cursor_pos, downstairs_asset_id))
+      }),
       AssetID::PressurePlate => self.draw_pressure_plate_ui(ui),
       AssetID::Saw => self.draw_saw_ui(ui),
       AssetID::Fireball => self.draw_fireball_ui(ui),

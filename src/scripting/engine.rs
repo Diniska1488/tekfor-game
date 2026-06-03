@@ -1,4 +1,4 @@
-use crate::lockpicking::LockPickKind;
+use crate::lock_picking::LockPickKind;
 
 use macroquad::logging as log;
 use serde::Serialize;
