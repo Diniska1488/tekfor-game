@@ -43,7 +43,7 @@ pub fn update_sprites(world: &hecs::World) {
   }
 }
 
-pub fn update_animations(world: &mut hecs::World) -> bool {
+pub fn update_animations(world: &mut hecs::World) {
   let mut finished_entities = Vec::new();
 
   for (anim, entity) in world.query_mut::<(&mut Animation, hecs::Entity)>() {
@@ -52,18 +52,13 @@ pub fn update_animations(world: &mut hecs::World) -> bool {
     }
   }
 
-  if finished_entities.is_empty() {
-    return false;
-  }
-
   for entity in finished_entities {
     let _ = world.remove_one::<Animation>(entity);
   }
-  true
 }
 
 pub fn is_any_animation_active(world: &hecs::World) -> bool {
-  world.query::<&Animation>().into_iter().any(|anim| !anim.is_finished())
+  world.query::<&Animation>().iter().any(|anim| !anim.is_finished())
 }
 
 fn interpolated_pos(anim: &Animation, start: Vec2, end: Vec2) -> Vec2 {

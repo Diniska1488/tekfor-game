@@ -33,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
 
       egui_ctx.set_pixels_per_point(screen_dpi_scale() * Settings::get().ui_scale_factor);
 
-      draw_ui(&mut current_state, &lua, egui_ctx);
+      draw_ui(&mut current_state, egui_ctx);
     });
 
     if !ui_wants_pointer_input {
@@ -41,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let ui_wants_input = ui_wants_pointer_input || ui_wants_keyboard_input;
-    update_and_draw(&mut current_state, &state, ui_wants_input);
+    update_and_draw(&mut current_state, &state, &lua, ui_wants_input)?;
 
     egui_macroquad::draw();
 
@@ -62,11 +62,11 @@ fn window_conf() -> Conf {
   }
 }
 
-fn draw_ui(current_state: &mut GameState, lua: &Lua, egui_ctx: &egui::Context) {
+fn draw_ui(current_state: &mut GameState, egui_ctx: &egui::Context) {
   let maybe_new_state = match current_state {
     GameState::Menu(menu) => menu.draw_ui(egui_ctx),
     GameState::Editor(editor) => editor.draw_ui(egui_ctx),
-    GameState::Gameplay(gameplay) => gameplay.draw_ui(lua, egui_ctx),
+    GameState::Gameplay(gameplay) => gameplay.draw_ui(egui_ctx),
   };
 
   if let Some(new_state) = maybe_new_state {
@@ -74,7 +74,12 @@ fn draw_ui(current_state: &mut GameState, lua: &Lua, egui_ctx: &egui::Context) {
   }
 }
 
-fn update_and_draw(current_state: &mut GameState, state: &Game, ui_wants_input: bool) {
+fn update_and_draw(
+  current_state: &mut GameState,
+  state: &Game,
+  lua: &Lua,
+  ui_wants_input: bool,
+) -> anyhow::Result<()> {
   match current_state {
     GameState::Menu(_) => (),
     GameState::Editor(editor) => {
@@ -82,8 +87,9 @@ fn update_and_draw(current_state: &mut GameState, state: &Game, ui_wants_input: 
       editor.draw(state);
     }
     GameState::Gameplay(gameplay) => {
-      gameplay.update();
+      gameplay.update(lua)?;
       gameplay.draw(state);
     }
   }
+  Ok(())
 }

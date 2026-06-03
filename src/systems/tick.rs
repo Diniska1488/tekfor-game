@@ -1,5 +1,4 @@
 use crate::components::*;
-use crate::states::gameplay::MoveOptions;
 use crate::{WorldGrid, utils};
 
 pub fn update_tickable(world_grid: &mut WorldGrid) {
@@ -39,15 +38,20 @@ pub fn fireball_handler(
   this_entity: hecs::Entity,
   _: Option<hecs::Entity>,
 ) {
-  let Ok(facing_dir) = world_grid.get::<&Facing>(this_entity).map(|facing| facing.0) else {
+  let Ok((queue, dir)) = world_grid
+    .query_one_mut::<(&mut ActionQueue, &Facing)>(this_entity)
+    .map(|(queue, facing)| (queue, facing.into_inner()))
+  else {
     return;
   };
 
   // NOTE: Сущность не удалится если она движется в сторону левой или верхней границы.
   //       Пока не знаю как это починить.
-  if !world_grid.move_entity(this_entity, MoveOptions::new(facing_dir)) {
-    let _ = world_grid.despawn_entity(this_entity);
-  }
+  queue.push_back(ActionKind::Move(MoveOptions {
+    dir,
+    can_push: false,
+    despawn_if_collided: true,
+  }));
 }
 
 pub fn fireball_thrower_handler(
@@ -58,18 +62,25 @@ pub fn fireball_thrower_handler(
   let Ok((this_pos, facing_dir)) = world_grid
     .query_one::<(&Position, &Facing)>(this_entity)
     .get()
-    .map(|(pos, Facing(dir))| (pos.into_inner(), *dir))
+    .map(|(pos, facing)| (pos.into_inner(), facing.into_inner()))
   else {
     return;
   };
 
   let new_pos = utils::advance_pos_in_direction(this_pos, facing_dir);
+  let has_obstacle_on_the_way =
+    world_grid.has_component_at::<&Obstacle>(new_pos.x, new_pos.y).is_some_and(|obstacle| obstacle);
 
-  if world_grid.has_anything_solid_at(new_pos.x, new_pos.y) {
+  if has_obstacle_on_the_way {
     return;
   }
 
-  world_grid.spawn_fireball_at(new_pos, facing_dir);
+  let fireball = world_grid.spawn_fireball_at(new_pos, facing_dir);
+
+  // Не даем самому первому фаерболу застыть на месте без анимации.
+  if let Ok(queue) = world_grid.query_one_mut::<&mut ActionQueue>(fireball) {
+    queue.push_back(ActionKind::Move(MoveOptions::new(facing_dir)));
+  }
 }
 
 pub fn pressure_plate_handler(
@@ -87,7 +98,7 @@ pub fn pressure_plate_handler(
 
   let is_anything_standing_on_plate = this_cell_entities
     .iter()
-    .any(|&entity| world_grid.satisfies::<&Weighted>(entity) && entity != this_entity);
+    .any(|&entity| world_grid.satisfies::<&Solid>(entity) && entity != this_entity);
 
   let Some(linked_entity) = linked_entity else {
     return;
@@ -106,9 +117,9 @@ pub fn door_handler(
   _: Option<hecs::Entity>,
 ) {
   if let Err(hecs::ComponentError::MissingComponent(_)) =
-    world_grid.remove::<(Closed, Solid)>(this_entity)
+    world_grid.remove::<(Closed, Obstacle)>(this_entity)
   {
-    world_grid.insert(this_entity, (Closed, Solid)).unwrap();
+    world_grid.insert(this_entity, (Closed, Obstacle)).unwrap();
   }
 }
 
@@ -121,9 +132,11 @@ pub fn saw_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity, _: Opt
   };
 
   let new_pos = utils::advance_pos_in_direction(this_pos, bouncing_to);
+  let has_obstacle_on_the_way =
+    world_grid.has_component_at::<&Obstacle>(new_pos.x, new_pos.y).is_some_and(|obstacle| obstacle);
 
   if let Ok(mut bouncing) = world_grid.get::<&mut Bouncing>(this_entity)
-    && world_grid.has_anything_solid_at(new_pos.x, new_pos.y)
+    && has_obstacle_on_the_way
   {
     let from = bouncing.from;
 
@@ -131,7 +144,10 @@ pub fn saw_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity, _: Opt
     bouncing.to = from;
   }
 
-  if let Ok(dir) = world_grid.get::<&Bouncing>(this_entity).map(|b| b.to) {
-    world_grid.move_entity(this_entity, MoveOptions::new(dir));
+  if let Ok((queue, dir)) = world_grid
+    .query_one_mut::<(&mut ActionQueue, &Bouncing)>(this_entity)
+    .map(|(queue, bouncing)| (queue, bouncing.to))
+  {
+    queue.push_back(ActionKind::Move(MoveOptions::new(dir)));
   }
 }

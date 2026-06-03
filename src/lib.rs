@@ -1,4 +1,5 @@
 pub mod components;
+pub mod lockpicking;
 pub mod resources;
 pub mod scripting;
 pub mod serialize;
@@ -13,7 +14,7 @@ use serialize::WorldInfo;
 use strum::{EnumIter, IntoStaticStr};
 
 use states::editor::Editor;
-use states::gameplay::{Gameplay, MoveOptions};
+use states::gameplay::Gameplay;
 use states::menu::Menu;
 
 use macroquad::experimental::camera::mouse::Camera;
@@ -223,8 +224,11 @@ impl WorldGrid {
       Sprite(AssetID::Saw),
       Movable,
       OnGrid,
+      Solid,
+      Obstacle,
       CausesDeath,
       Position(pos),
+      ActionQueue::default(),
       Bouncing { from, to },
       Tickable(Interactable { linked_entity: None, handler_kind: InteractableHandlerKind::Saw }),
     ))
@@ -234,7 +238,7 @@ impl WorldGrid {
     self.spawn_entity((
       Sprite(AssetID::Player),
       ZIndex(1),
-      Weighted,
+      Solid,
       Movable,
       OnGrid,
       Player,
@@ -245,7 +249,7 @@ impl WorldGrid {
   }
 
   pub fn spawn_wall_at(&mut self, pos: UVec2, id: AssetID) -> hecs::Entity {
-    self.spawn_entity((Sprite(id), OnGrid, Solid, Position(pos)))
+    self.spawn_entity((Sprite(id), OnGrid, Solid, Obstacle, Position(pos)))
   }
 
   pub fn spawn_crate_at(&mut self, pos: UVec2) -> hecs::Entity {
@@ -253,8 +257,8 @@ impl WorldGrid {
       Sprite(AssetID::Crate),
       ZIndex(1),
       OnGrid,
-      Weighted,
       Solid,
+      Obstacle,
       Movable,
       Pushable,
       Position(pos),
@@ -268,6 +272,7 @@ impl WorldGrid {
       OnGrid,
       CausesDeath,
       Position(pos),
+      ActionQueue::default(),
       Facing(dir),
       Tickable(Interactable {
         linked_entity: None,
@@ -297,6 +302,7 @@ impl WorldGrid {
     self.spawn_entity((
       Sprite(AssetID::PressurePlate),
       OnGrid,
+      Solid,
       Position(pos),
       Tickable(Interactable {
         linked_entity,
@@ -312,6 +318,7 @@ impl WorldGrid {
       OnGrid,
       Closed,
       Solid,
+      Obstacle,
       Position(pos),
       Interactable { linked_entity: None, handler_kind: InteractableHandlerKind::Door },
     ))
@@ -324,9 +331,33 @@ impl WorldGrid {
     self.world.despawn(entity)
   }
 
-  pub fn move_entity(&mut self, entity: hecs::Entity, opts: MoveOptions) -> bool {
+  pub fn has_component_at<Q: hecs::Query>(&self, x: u32, y: u32) -> Option<bool> {
+    let cell_entities = self.grid.get_cell(x, y)?;
+
+    Some(cell_entities.iter().any(|&ent| self.world.satisfies::<Q>(ent)))
+  }
+
+  fn try_push_entities_if_any(&mut self, x: u32, y: u32, dir: Direction) {
+    let Some(cell_entities) = self.grid.get_cell(x, y) else {
+      return;
+    };
+
+    let pushable_entities: Vec<hecs::Entity> = cell_entities
+      .iter()
+      .filter(|&&ent| self.world.satisfies::<(&Movable, &Pushable)>(ent))
+      .cloned()
+      .collect();
+
+    if pushable_entities.is_empty() {
+      return;
+    }
+
+    pushable_entities.into_iter().for_each(|ent| self.move_entity(ent, MoveOptions::new(dir)));
+  }
+
+  fn move_entity(&mut self, entity: hecs::Entity, opts: MoveOptions) {
     if !self.world.satisfies::<(&Movable, &OnGrid)>(entity) {
-      return false;
+      return;
     }
 
     let Ok(new_pos) = self
@@ -334,17 +365,19 @@ impl WorldGrid {
       .get::<&Position>(entity)
       .map(|pos| utils::advance_pos_in_direction(pos.into_inner(), opts.dir))
     else {
-      return false;
+      return;
     };
 
-    if opts.push {
-      self.push_entities_if_any(new_pos.x, new_pos.y, opts.dir);
+    if opts.can_push {
+      self.try_push_entities_if_any(new_pos.x, new_pos.y, opts.dir);
     }
 
-    self.move_entity_to_pos(entity, new_pos.x, new_pos.y)
+    if !self.move_entity_to_pos(entity, new_pos.x, new_pos.y) && opts.despawn_if_collided {
+      let _ = self.despawn_entity(entity);
+    }
   }
 
-  pub fn interact(&mut self, entity: hecs::Entity, dir: Direction) {
+  fn interact(&mut self, entity: hecs::Entity, dir: Direction) {
     let Ok(pos) = self.world.get::<&Position>(entity).map(|pos| pos.into_inner()) else {
       return;
     };
@@ -369,38 +402,8 @@ impl WorldGrid {
     }
   }
 
-  pub fn has_anything_solid_at(&self, x: u32, y: u32) -> bool {
-    let Some(cell_entities) = self.grid.get_cell(x, y) else {
-      return false;
-    };
-
-    cell_entities.iter().any(|&ent| self.world.satisfies::<&Solid>(ent))
-  }
-
-  fn push_entities_if_any(&mut self, x: u32, y: u32, dir: Direction) {
-    let Some(cell_entities) = self.grid.get_cell(x, y) else {
-      return;
-    };
-
-    let pushable_entities: Vec<hecs::Entity> = cell_entities
-      .iter()
-      .filter(|&&ent| self.world.satisfies::<(&Movable, &Pushable)>(ent))
-      .cloned()
-      .collect();
-
-    if pushable_entities.is_empty() {
-      return;
-    }
-
-    pushable_entities.into_iter().for_each(|ent| {
-      self.move_entity(ent, MoveOptions::new(dir));
-    });
-  }
-
   fn move_entity_to_pos(&mut self, entity: hecs::Entity, x: u32, y: u32) -> bool {
-    let is_out_of_bounds = self.grid.get_cell(x, y).is_none();
-
-    if is_out_of_bounds || self.has_anything_solid_at(x, y) {
+    if self.has_component_at::<&Obstacle>(x, y).is_none_or(|obstacle| obstacle) {
       return false;
     }
 

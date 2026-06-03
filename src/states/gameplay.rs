@@ -19,6 +19,7 @@ pub struct Gameplay {
   script_path: Option<String>,
   player_entity: Option<hecs::Entity>,
   tick_state: TickState,
+  abyss: Abyss,
 }
 
 impl Gameplay {
@@ -31,17 +32,23 @@ impl Gameplay {
       .map(|(_, entity)| entity)
       .next();
 
-    Self { world_grid, script_path: None, player_entity, tick_state: TickState::ProcessingLogic }
+    Self {
+      world_grid,
+      script_path: None,
+      player_entity,
+      tick_state: TickState::ProcessingLogic,
+      abyss: Abyss::default(),
+    }
   }
 
-  pub fn draw_ui(&mut self, lua: &Lua, egui_ctx: &egui::Context) -> Option<GameState> {
-    let result = egui::Window::new("Debug window")
+  pub fn draw_ui(&mut self, egui_ctx: &egui::Context) -> Option<GameState> {
+    egui::Window::new("Gameplay")
       .resizable(false)
       .show(egui_ctx, |ui| {
         if ui.button("Return to main menu").clicked() {
           let menu = Menu::default();
 
-          return Ok(Some(GameState::Menu(menu)));
+          return Some(GameState::Menu(menu));
         }
 
         ui.separator();
@@ -54,17 +61,10 @@ impl Gameplay {
           })
         });
 
-        if let Some(ref script) = self.script_path
-          && ui.button("Execute").clicked()
-        {
-          let script_code = fs::read_to_string(script)?;
-          scripting::engine::run(lua, self, script_code)?;
-        }
-        Ok::<Option<GameState>, anyhow::Error>(None)
+        None
       })
-      .unwrap();
-
-    result.inner.unwrap().inspect_err(|err| log::error!("{}", err)).unwrap()
+      .and_then(|resp| resp.inner)
+      .unwrap()
   }
 
   pub fn draw(&self, state: &Game) {
@@ -73,12 +73,18 @@ impl Gameplay {
     });
   }
 
-  pub fn update(&mut self) {
+  pub fn update(&mut self, lua: &Lua) -> mlua::Result<()> {
     update_sprites(&self.world_grid);
 
     match self.tick_state {
+      TickState::ProcessingLogic => {
+        self.update_lua(lua)?;
+        self.do_logical_tick();
+
+        self.tick_state = TickState::WaitingForAction;
+      }
       TickState::WaitingForAction => {
-        if self.process_actions() {
+        if self.update_input() && self.process_actions() {
           self.tick_state = TickState::Animating;
         }
       }
@@ -89,11 +95,8 @@ impl Gameplay {
           self.tick_state = TickState::ProcessingLogic;
         }
       }
-      TickState::ProcessingLogic => {
-        self.do_logical_tick();
-        self.tick_state = TickState::WaitingForAction;
-      }
     }
+    Ok(())
   }
 
   pub fn push_player_action(&mut self, action_kind: ActionKind) {
@@ -116,6 +119,20 @@ impl Gameplay {
     update_death_causers(&mut self.world_grid);
   }
 
+  fn update_lua(&mut self, lua: &Lua) -> mlua::Result<()> {
+    let Some(ref path) = self.script_path else { return Ok(()) };
+
+    match fs::read(path) {
+      Ok(bytes) => {
+        lua.load(bytes).exec()?;
+
+        scripting::api::on_abyss_call(lua, &mut self.abyss)?;
+      }
+      Err(err) => log::error!("Failed to read currently selected script: {}", err),
+    }
+    Ok(())
+  }
+
   fn process_actions(&mut self) -> bool {
     let mut actions = Vec::new();
 
@@ -131,31 +148,47 @@ impl Gameplay {
 
     for (action_kind, entity) in actions {
       match action_kind {
-        ActionKind::Move(dir) => {
-          self.world_grid.move_entity(entity, MoveOptions { dir, push: true });
-        }
+        ActionKind::Move(opts) => self.world_grid.move_entity(entity, opts),
         ActionKind::Interact(dir) => self.world_grid.interact(entity, dir),
-        ActionKind::NoOp => (),
       }
+    }
+    true
+  }
+
+  fn update_input(&mut self) -> bool {
+    let Some(key_pressed) = get_last_key_pressed() else {
+      return false;
+    };
+
+    if is_any_animation_active(&self.world_grid) {
+      return false;
+    }
+
+    let move_dir = match key_pressed {
+      KeyCode::W => Some(Direction::North),
+      KeyCode::A => Some(Direction::West),
+      KeyCode::S => Some(Direction::South),
+      KeyCode::D => Some(Direction::East),
+      _ => None,
+    };
+
+    if let Some(dir) = move_dir {
+      self.push_player_action(ActionKind::Move(MoveOptions {
+        dir,
+        can_push: true,
+        despawn_if_collided: false,
+      }));
     }
     true
   }
 }
 
-pub struct MoveOptions {
-  pub dir: Direction,
-  pub push: bool,
-}
-
-impl MoveOptions {
-  pub fn new(dir: Direction) -> Self {
-    Self { dir, push: false }
-  }
-}
+#[derive(Default)]
+pub struct Abyss {}
 
 #[derive(Debug)]
 enum TickState {
+  ProcessingLogic,
   WaitingForAction,
   Animating,
-  ProcessingLogic,
 }

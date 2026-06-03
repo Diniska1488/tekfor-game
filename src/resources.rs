@@ -90,7 +90,7 @@ pub struct Settings {
 impl Default for Settings {
   fn default() -> Self {
     Self {
-      animation_speed_multiplier: 1.0,
+      animation_speed_multiplier: 2.0,
       ui_scale_factor: 1.25,
       show_frames_per_second: false,
       settings_file_path: Default::default(),

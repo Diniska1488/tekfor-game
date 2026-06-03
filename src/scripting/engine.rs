@@ -1,51 +1,40 @@
-use super::api;
-use crate::Direction;
-use crate::states::gameplay::Gameplay;
+use crate::lockpicking::LockPickKind;
 
+use macroquad::logging as log;
 use serde::Serialize;
 use strum::IntoEnumIterator;
 
 use mlua::MaybeSend;
 use mlua::prelude::*;
 
-const STATE_KEY: &str = "__STATE";
-
 pub fn create() -> LuaResult<Lua> {
   let lua = Lua::new();
 
-  add_func(&lua, "move_player", api::move_player)?;
-  add_func(&lua, "interact", api::interact)?;
-  add_func(&lua, "wait", api::wait)?;
+  add_enum::<LockPickKind>(&lua)?;
 
-  add_enum::<Direction>(&lua)?;
+  add_func(&lua, "whisper_to_abyss", |lua, message: LuaValue| {
+    log::info!("{}", lua.from_value::<String>(message)?);
+
+    Ok(())
+  })?;
 
   Ok(lua)
 }
 
-pub fn run<S>(lua: &Lua, state: &mut Gameplay, code: S) -> LuaResult<()>
-where
-  S: AsRef<str>,
-{
-  lua.scope(move |scope| {
-    let state = scope.create_any_userdata_ref_mut(state)?;
-
-    lua.set_named_registry_value(STATE_KEY, state)?;
-    lua.load(code.as_ref()).exec()?;
-    lua.unset_named_registry_value(STATE_KEY)
-  })
+pub(super) fn call_func<R: FromLuaMulti>(
+  lua: &Lua,
+  key: impl IntoLua,
+  args: impl IntoLuaMulti,
+) -> LuaResult<R> {
+  lua.globals().get::<LuaFunction>(key)?.call(args)
 }
 
-fn add_func<F, A>(lua: &Lua, name: &str, f: F) -> LuaResult<()>
+fn add_func<F, A>(lua: &Lua, key: impl IntoLua, f: F) -> LuaResult<()>
 where
-  F: Fn(&Lua, &mut Gameplay, A) -> LuaResult<()> + MaybeSend + 'static,
+  F: Fn(&Lua, A) -> LuaResult<()> + MaybeSend + 'static,
   A: FromLuaMulti,
 {
-  let func = lua.create_function(move |lua, args| {
-    let state_raw = lua.named_registry_value::<LuaAnyUserData>(STATE_KEY)?;
-    state_raw.borrow_mut_scoped(|state| f(lua, state, args))
-  })?;
-
-  lua.globals().set(name, func)
+  lua.globals().set(key, lua.create_function(f)?)
 }
 
 fn add_enum<E>(lua: &Lua) -> LuaResult<()>

@@ -64,16 +64,28 @@ impl Animation {
 
   /// Возвращает true, если анимация закончила проигрываться.
   pub fn update(&mut self, frame_time: f32) -> bool {
-    self.elapsed += frame_time * Settings::get().animation_speed_multiplier;
+    self.elapsed += Settings::get().animation_speed_multiplier * frame_time;
     self.is_finished()
   }
 }
 
 #[derive(Serialize, Deserialize)]
 pub enum ActionKind {
-  Move(Direction),
+  Move(MoveOptions),
   Interact(Direction),
-  NoOp,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct MoveOptions {
+  pub dir: Direction,
+  pub can_push: bool,
+  pub despawn_if_collided: bool,
+}
+
+impl MoveOptions {
+  pub fn new(dir: Direction) -> Self {
+    Self { dir, can_push: false, despawn_if_collided: false }
+  }
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -155,10 +167,10 @@ pub struct Pushable;
 pub struct OnGrid;
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
-pub struct Solid;
+pub struct Obstacle;
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
-pub struct Weighted;
+pub struct Solid;
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct CausesDeath;
