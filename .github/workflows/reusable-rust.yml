@@ -27,11 +27,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build (release)
-        uses: actions-rs/cargo@v1
-        with:
-          command: build --release
+        run: cargo build --release
 
       - name: Run tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: test --release
+        run: cargo test --release
