@@ -1,21 +1,13 @@
-pub mod components;
-pub mod lock_picking;
-pub mod resources;
-pub mod scripting;
-pub mod serialize;
-pub mod states;
-pub mod systems;
-pub mod utils;
+use crate::components::*;
+use crate::resources::{AssetManager, SpriteID};
+use crate::serialize::WorldInfo;
+use crate::states::editor::Editor;
+use crate::states::gameplay::Gameplay;
+use crate::states::menu::Menu;
+use crate::utils;
 
-use components::*;
-use resources::{AssetManager, SpriteID};
 use serde::{Deserialize, Serialize};
-use serialize::WorldInfo;
 use strum::{EnumIter, IntoStaticStr};
-
-use states::editor::Editor;
-use states::gameplay::Gameplay;
-use states::menu::Menu;
 
 use macroquad::experimental::camera::mouse::Camera;
 use macroquad::prelude::*;
@@ -24,7 +16,7 @@ use std::ops::{Deref, DerefMut};
 
 pub struct Game {
   pub asset_manager: AssetManager,
-  pub camera: Camera,
+  camera: Camera,
 }
 
 impl Game {
@@ -362,28 +354,7 @@ impl WorldGrid {
     Some(cell_entities.iter().any(|&ent| self.world.satisfies::<Q>(ent)))
   }
 
-  fn push_entities(&mut self, entities: &[hecs::Entity], dir: Direction) {
-    for &entity in entities.iter() {
-      if !self.world.satisfies::<(&Movable, &Pushable)>(entity) {
-        continue;
-      }
-
-      self.move_entity(entity, MoveOptions::new(dir));
-    }
-  }
-
-  fn interact_with_entities(&mut self, entities: &[hecs::Entity]) {
-    for &entity in entities.iter() {
-      let Ok(handler) = self.world.get::<&InteractableHandlerKind>(entity).map(|h| h.to_fn())
-      else {
-        continue;
-      };
-
-      handler(self, entity);
-    }
-  }
-
-  fn move_entity(&mut self, entity: hecs::Entity, opts: MoveOptions) {
+  pub fn move_entity(&mut self, entity: hecs::Entity, opts: MoveOptions) {
     if !self.world.satisfies::<(&Movable, &OnGrid)>(entity) {
       return;
     }
@@ -408,6 +379,27 @@ impl WorldGrid {
 
     if !self.move_entity_to_pos(entity, new_pos.x, new_pos.y) && opts.despawn_if_collided {
       let _ = self.despawn_entity(entity);
+    }
+  }
+
+  fn push_entities(&mut self, entities: &[hecs::Entity], dir: Direction) {
+    for &entity in entities.iter() {
+      if !self.world.satisfies::<(&Movable, &Pushable)>(entity) {
+        continue;
+      }
+
+      self.move_entity(entity, MoveOptions::new(dir));
+    }
+  }
+
+  fn interact_with_entities(&mut self, entities: &[hecs::Entity]) {
+    for &entity in entities.iter() {
+      let Ok(handler) = self.world.get::<&InteractableHandlerKind>(entity).map(|h| h.to_fn())
+      else {
+        continue;
+      };
+
+      handler(self, entity);
     }
   }
 

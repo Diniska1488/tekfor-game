@@ -1,8 +1,9 @@
 use crate::components::*;
+use crate::core::{Direction, Game, GameState, WorldGrid};
 use crate::resources::{MaterialID, Settings};
 use crate::serialize::WorldInfo;
 use crate::states::menu::Menu;
-use crate::{Direction, Game, GameState, WorldGrid, scripting, utils};
+use crate::{scripting, utils};
 
 use crate::systems::draw::*;
 use crate::systems::tick::*;

@@ -1,6 +1,6 @@
+use crate::core::{Direction, WorldGrid};
 use crate::resources::{Settings, SpriteID};
 use crate::systems::tick::*;
-use crate::{Direction, WorldGrid};
 
 use macroquad::math::{UVec2, Vec2};
 use serde::{Deserialize, Serialize};

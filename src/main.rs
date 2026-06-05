@@ -1,9 +1,18 @@
 use egui_macroquad::egui;
 use mlua::Lua;
 
-use tekfor_game::resources::Settings;
-use tekfor_game::scripting;
-use tekfor_game::{Game, GameState};
+pub mod components;
+pub mod core;
+pub mod lock_picking;
+pub mod resources;
+pub mod scripting;
+pub mod serialize;
+pub mod states;
+pub mod systems;
+pub mod utils;
+
+use crate::core::{Game, GameState};
+use crate::resources::Settings;
 
 use macroquad::miniquad::conf::{AppleGfxApi, Platform};
 use macroquad::prelude::*;

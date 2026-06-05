@@ -1,9 +1,10 @@
 use crate::components::*;
+use crate::core::{Direction, Game, GameState, Grid, WorldGrid};
 use crate::resources::SpriteID;
 use crate::serialize::*;
 use crate::states::menu::Menu;
 use crate::systems::draw::draw_sprites;
-use crate::{Direction, Game, GameState, Grid, WorldGrid, utils};
+use crate::utils;
 
 use egui_macroquad::egui;
 use strum::IntoEnumIterator;

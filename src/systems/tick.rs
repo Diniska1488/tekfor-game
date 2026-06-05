@@ -1,5 +1,6 @@
 use crate::components::*;
-use crate::{WorldGrid, utils};
+use crate::core::WorldGrid;
+use crate::utils;
 
 pub fn update_tickable(world_grid: &mut WorldGrid) {
   let tickable: Vec<(InteractableHandlerKind, _)> = world_grid

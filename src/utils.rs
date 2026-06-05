@@ -1,5 +1,5 @@
 use crate::components::Sprite;
-use crate::{Direction, Grid};
+use crate::core::{Direction, Grid};
 
 use macroquad::math::*;
 
