@@ -15,7 +15,7 @@ pub fn draw_sprites(world: &hecs::World, asset_manager: &AssetManager) {
       pos.global()
     };
 
-    let z_index = world.get::<&ZIndex>(entity).map(|z| z.0).unwrap_or(0);
+    let z_index = world.get::<&ZIndex>(entity).map(|z| z.into_inner()).unwrap_or(0);
 
     render_queue.push((z_index, global_pos, *sprite));
   }

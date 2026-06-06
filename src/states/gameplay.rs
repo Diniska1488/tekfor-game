@@ -1,6 +1,6 @@
 use crate::components::*;
 use crate::core::{Direction, Game, GameState, WorldGrid};
-use crate::resources::{MaterialID, Settings};
+use crate::resources::{AssetManager, MaterialID, Settings};
 use crate::serialize::WorldInfo;
 use crate::states::menu::Menu;
 use crate::{scripting, utils};
@@ -100,26 +100,30 @@ impl Gameplay {
     });
 
     if let Some(rt) = render_target {
-      let crt = state.asset_manager.get_material(MaterialID::CRT);
-      crt.set_uniform("Resolution", vec2(screen_width(), screen_height()));
-      crt.set_uniform("Intensity", self.hit_intensity);
-      crt.set_uniform("CrtIntensity", Settings::get().crt_intensity);
-
-      gl_use_material(crt);
-
-      draw_texture_ex(
-        &rt,
-        0.0,
-        screen_height(),
-        WHITE,
-        DrawTextureParams {
-          dest_size: Some(vec2(screen_width(), -screen_height())),
-          ..Default::default()
-        },
-      );
-
-      gl_use_default_material();
+      self.draw_crt_effect(&rt, &state.asset_manager);
     }
+  }
+
+  fn draw_crt_effect(&self, render_target: &Texture2D, asset_manager: &AssetManager) {
+    let width = screen_width();
+    let height = screen_height();
+
+    let crt = asset_manager.get_material(MaterialID::CRT);
+    crt.set_uniform("Resolution", vec2(width, height));
+    crt.set_uniform("Intensity", self.hit_intensity);
+    crt.set_uniform("CrtIntensity", Settings::get().crt_intensity);
+
+    gl_use_material(crt);
+
+    draw_texture_ex(
+      render_target,
+      0.0,
+      height,
+      WHITE,
+      DrawTextureParams { dest_size: Some(vec2(width, -height)), ..Default::default() },
+    );
+
+    gl_use_default_material();
   }
 
   pub fn update(&mut self, lua: &Lua) -> mlua::Result<()> {

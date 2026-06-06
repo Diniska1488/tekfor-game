@@ -68,7 +68,7 @@ pub enum ComponentID {
   Position,
   ZIndex,
   Sprite,
-  Interactable,
+  InteractableHandlerKind,
   Tickable,
   Facing,
   Locked,
@@ -82,6 +82,8 @@ pub enum ComponentID {
   Mortal,
   Obstacle,
   Downstairs,
+  WentDownstairs,
+  LinkedEntities,
 }
 
 macro_rules! impl_serialize_context {
@@ -185,7 +187,7 @@ impl_serialize_context!(
   ComponentID::Position => Position,
   ComponentID::ZIndex => ZIndex,
   ComponentID::Sprite => Sprite,
-  ComponentID::Interactable => Interactable,
+  ComponentID::InteractableHandlerKind => InteractableHandlerKind,
   ComponentID::Tickable => Tickable,
   ComponentID::Facing => Facing,
   ComponentID::Locked => Locked,
@@ -199,6 +201,8 @@ impl_serialize_context!(
   ComponentID::Mortal => Mortal,
   ComponentID::Obstacle => Obstacle,
   ComponentID::Downstairs => Downstairs,
+  ComponentID::WentDownstairs => WentDownstairs,
+  ComponentID::LinkedEntities => LinkedEntities,
 );
 
 impl_deserialize_context!(
@@ -209,7 +213,7 @@ impl_deserialize_context!(
   ComponentID::Position => Position,
   ComponentID::ZIndex => ZIndex,
   ComponentID::Sprite => Sprite,
-  ComponentID::Interactable => Interactable,
+  ComponentID::InteractableHandlerKind => InteractableHandlerKind,
   ComponentID::Tickable => Tickable,
   ComponentID::Facing => Facing,
   ComponentID::Locked => Locked,
@@ -223,6 +227,8 @@ impl_deserialize_context!(
   ComponentID::Mortal => Mortal,
   ComponentID::Obstacle => Obstacle,
   ComponentID::Downstairs => Downstairs,
+  ComponentID::WentDownstairs => WentDownstairs,
+  ComponentID::LinkedEntities => LinkedEntities,
 );
 
 pub(super) mod uvec2_serde {

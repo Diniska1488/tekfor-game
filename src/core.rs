@@ -235,7 +235,7 @@ impl WorldGrid {
       Downstairs,
       OnGrid,
       Position(pos),
-      Tickable::new(InteractableHandlerKind::Downstairs),
+      Tickable(InteractableHandlerKind::Downstairs),
     ))
   }
 
@@ -249,7 +249,7 @@ impl WorldGrid {
       Position(pos),
       ActionQueue::default(),
       Bouncing { from, to },
-      Tickable::new(InteractableHandlerKind::Saw),
+      Tickable(InteractableHandlerKind::Saw),
     ))
   }
 
@@ -293,7 +293,7 @@ impl WorldGrid {
       Position(pos),
       ActionQueue::default(),
       Facing(dir),
-      Tickable::new(InteractableHandlerKind::Fireball),
+      Tickable(InteractableHandlerKind::Fireball),
     ))
   }
 
@@ -303,7 +303,7 @@ impl WorldGrid {
       OnGrid,
       Position(pos),
       Facing(dir),
-      Tickable::new(InteractableHandlerKind::FireballThrower),
+      Tickable(InteractableHandlerKind::FireballThrower),
     ))
   }
 
@@ -316,7 +316,7 @@ impl WorldGrid {
       Sprite(SpriteID::PressurePlate),
       OnGrid,
       Position(pos),
-      Tickable::new(InteractableHandlerKind::PressurePlate),
+      Tickable(InteractableHandlerKind::PressurePlate),
     ));
 
     if let Some(entities) = linked_entities {
@@ -332,7 +332,7 @@ impl WorldGrid {
       OnGrid,
       Obstacle,
       Position(pos),
-      Interactable(InteractableHandlerKind::Door),
+      InteractableHandlerKind::Door,
     ));
 
     if is_locked {

@@ -157,20 +157,7 @@ impl LinkedEntities {
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
-pub struct Interactable(pub InteractableHandlerKind);
-
-#[derive(Serialize, Deserialize, Clone, Copy)]
-pub struct Tickable(pub Interactable);
-
-impl Tickable {
-  pub fn new(handler_kind: InteractableHandlerKind) -> Self {
-    Self(Interactable(handler_kind))
-  }
-
-  pub fn handler(self) -> InteractableHandlerKind {
-    self.into_inner().0
-  }
-}
+pub struct Tickable(pub InteractableHandlerKind);
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub struct Facing(pub Direction);
@@ -212,6 +199,6 @@ deref_component!(Position, UVec2);
 deref_component!(ZIndex, u32);
 deref_component!(Sprite, SpriteID);
 deref_component!(ActionQueue, VecDeque<ActionKind>);
-deref_component!(Tickable, Interactable);
+deref_component!(Tickable, InteractableHandlerKind);
 deref_component!(Facing, Direction);
 deref_component!(LinkedEntities, Arc<Vec<hecs::Entity>>);

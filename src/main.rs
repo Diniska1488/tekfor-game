@@ -1,6 +1,3 @@
-use egui_macroquad::egui;
-use mlua::Lua;
-
 pub mod components;
 pub mod core;
 pub mod lock_picking;
@@ -13,6 +10,9 @@ pub mod utils;
 
 use crate::core::{Game, GameState};
 use crate::resources::Settings;
+
+use egui_macroquad::egui;
+use mlua::Lua;
 
 use macroquad::miniquad::conf::{AppleGfxApi, Platform};
 use macroquad::prelude::*;

@@ -6,7 +6,7 @@ pub fn update_tickable(world_grid: &mut WorldGrid) {
   let tickable: Vec<(InteractableHandlerKind, _)> = world_grid
     .query::<(&Tickable, hecs::Entity)>()
     .into_iter()
-    .map(|(tickable, entity)| (tickable.handler(), entity))
+    .map(|(tickable, entity)| (tickable.into_inner(), entity))
     .collect();
 
   for (handler, entity) in tickable.into_iter() {
@@ -110,6 +110,10 @@ pub fn pressure_plate_handler(world_grid: &mut WorldGrid, this_entity: hecs::Ent
 }
 
 pub fn door_handler(world_grid: &mut WorldGrid, this_entity: hecs::Entity) {
+  if world_grid.satisfies::<&Locked>(this_entity) {
+    return;
+  }
+
   let _ = world_grid.despawn_entity(this_entity);
 }
 

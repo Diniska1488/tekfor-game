@@ -107,10 +107,7 @@ impl AssetManager {
     materials.insert(
       MaterialID::CRT,
       load_material(
-        ShaderSource::Glsl {
-          vertex: include_str!("../assets/materials/vertex.glsl"),
-          fragment: include_str!("../assets/materials/crt.glsl"),
-        },
+        ShaderSource::Glsl { vertex: VERTEX_SHADER, fragment: CRT_SHADER },
         MaterialParams {
           uniforms: vec![
             UniformDesc::new("Resolution", UniformType::Float2),
@@ -125,6 +122,9 @@ impl AssetManager {
     Ok(materials)
   }
 }
+
+const VERTEX_SHADER: &str = include_str!("../assets/materials/vertex.glsl");
+const CRT_SHADER: &str = include_str!("../assets/materials/crt.glsl");
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Settings {
