@@ -167,18 +167,8 @@ impl Gameplay {
 
   fn do_logical_tick(&mut self, asset_manager: &AssetManager) {
     self.update_tickable();
+    self.mark_dead();
     self.process_events(asset_manager);
-
-    let mut entities_to_despawn = Vec::new();
-
-    self.mark_dead(&mut entities_to_despawn);
-    self.mark_went_downstairs(&mut entities_to_despawn);
-
-    for entity in entities_to_despawn.into_iter() {
-      self.pre_entity_despawn(entity);
-
-      let _ = self.world_grid.despawn_entity(entity);
-    }
   }
 
   fn update_tickable(&mut self) {
@@ -194,39 +184,20 @@ impl Gameplay {
     }
   }
 
-  fn mark_dead(&self, to_despawn: &mut Vec<hecs::Entity>) {
-    for (_, &pos) in self.world_grid.query::<(&CausesDeath, &Position)>().into_iter() {
+  fn mark_dead(&mut self) {
+    for (_, &pos, attacker) in
+      self.world_grid.query::<(&CausesDeath, &Position, hecs::Entity)>().into_iter()
+    {
       let Some(cell_entities) = self.world_grid.get_cell(pos.x, pos.y) else {
         continue;
       };
 
-      for &entity in cell_entities {
-        if !self.world_grid.satisfies::<&Mortal>(entity) {
+      for &target in cell_entities {
+        if !self.world_grid.satisfies::<&Mortal>(target) {
           continue;
         }
 
-        to_despawn.push(entity);
-      }
-    }
-  }
-
-  fn mark_went_downstairs(&self, to_despawn: &mut Vec<hecs::Entity>) {
-    let mut went_downstairs_query =
-      self.world_grid.query::<(&WentDownstairs, &Player, hecs::Entity)>();
-
-    to_despawn.extend(went_downstairs_query.into_iter().map(|(_, _, entity)| entity));
-  }
-
-  fn pre_entity_despawn(&mut self, entity: hecs::Entity) {
-    if self.world_grid.satisfies::<&WentDownstairs>(entity) {
-      self.is_level_finished = true;
-    } else if self.world_grid.satisfies::<&Player>(entity) {
-      self.hit_intensity = 1.0;
-
-      if let Some(entity_index) =
-        self.player_entities.iter().position(|&player_entity| player_entity == entity)
-      {
-        self.player_entities.remove(entity_index);
+        self.game_events.push(GameEvent::EntityDeath { target, attacker })
       }
     }
   }
@@ -308,7 +279,34 @@ impl Gameplay {
       let sound_id = match event {
         GameEvent::DoorLock => SoundID::Lock,
         GameEvent::DoorUnlock => SoundID::Unlock,
-        GameEvent::DoorOpen => SoundID::DoorOpen,
+        GameEvent::DoorOpen(entity) => {
+          let _ = self.world_grid.despawn_entity(entity);
+
+          SoundID::DoorOpen
+        }
+        GameEvent::EntityWentDowntairs(entity) => {
+          let entity_sprite_name = utils::entity_sprite_text_default(&self.world_grid, entity);
+
+          log::info!("{} went downstairs", entity_sprite_name);
+
+          let _ = self.world_grid.despawn_entity(entity);
+
+          self.is_level_finished = true;
+
+          SoundID::LevelFinished
+        }
+        GameEvent::EntityDeath { target, attacker } => {
+          let target_sprite_name = utils::entity_sprite_text_default(&self.world_grid, target);
+          let attacker_sprite_name = utils::entity_sprite_text_default(&self.world_grid, attacker);
+
+          log::info!("{} was killed by {}", target_sprite_name, attacker_sprite_name);
+
+          let _ = self.world_grid.despawn_entity(target);
+
+          self.hit_intensity = 1.0;
+
+          SoundID::Death
+        }
       };
 
       play_sound_once(asset_manager.get_sound(sound_id));
@@ -401,7 +399,9 @@ pub struct Abyss {}
 pub enum GameEvent {
   DoorLock,
   DoorUnlock,
-  DoorOpen,
+  DoorOpen(hecs::Entity),
+  EntityWentDowntairs(hecs::Entity),
+  EntityDeath { target: hecs::Entity, attacker: hecs::Entity },
 }
 
 enum TickState {

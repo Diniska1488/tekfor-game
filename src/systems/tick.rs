@@ -88,9 +88,7 @@ pub fn door_handler(state: &mut Gameplay, this_entity: hecs::Entity) {
     return;
   }
 
-  let _ = state.world_grid.despawn_entity(this_entity);
-
-  state.game_events.push(GameEvent::DoorOpen);
+  state.game_events.push(GameEvent::DoorOpen(this_entity));
 }
 
 pub fn saw_handler(state: &mut Gameplay, this_entity: hecs::Entity) {
@@ -137,6 +135,6 @@ pub fn downstairs_handler(state: &mut Gameplay, this_entity: hecs::Entity) {
       continue;
     }
 
-    let _ = state.world_grid.insert_one(entity, WentDownstairs);
+    state.game_events.push(GameEvent::EntityWentDowntairs(entity));
   }
 }

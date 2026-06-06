@@ -82,7 +82,6 @@ pub enum ComponentID {
   Mortal,
   Obstacle,
   Downstairs,
-  WentDownstairs,
   LinkedEntities,
 }
 
@@ -201,7 +200,6 @@ impl_serialize_context!(
   ComponentID::Mortal => Mortal,
   ComponentID::Obstacle => Obstacle,
   ComponentID::Downstairs => Downstairs,
-  ComponentID::WentDownstairs => WentDownstairs,
   ComponentID::LinkedEntities => LinkedEntities,
 );
 
@@ -227,7 +225,6 @@ impl_deserialize_context!(
   ComponentID::Mortal => Mortal,
   ComponentID::Obstacle => Obstacle,
   ComponentID::Downstairs => Downstairs,
-  ComponentID::WentDownstairs => WentDownstairs,
   ComponentID::LinkedEntities => LinkedEntities,
 );
 

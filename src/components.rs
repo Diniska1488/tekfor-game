@@ -191,9 +191,6 @@ pub struct Mortal;
 pub struct Player;
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
-pub struct WentDownstairs;
-
-#[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct Downstairs;
 
 deref_component!(Position, UVec2);
