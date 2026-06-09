@@ -341,6 +341,16 @@ impl WorldGrid {
     if let Ok(pos) = self.world.get::<&Position>(entity).map(|pos| pos.into_inner()) {
       self.grid.remove_from_cell(entity, pos.x, pos.y);
     };
+
+    for linked_entities in self
+      .world
+      .query_mut::<&mut LinkedEntities>()
+      .into_iter()
+      .filter_map(|linked_entities| linked_entities.get_mut())
+    {
+      linked_entities.retain(|&current_entity| current_entity != entity);
+    }
+
     self.world.despawn(entity)
   }
 

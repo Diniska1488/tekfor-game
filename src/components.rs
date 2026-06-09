@@ -153,8 +153,12 @@ impl LinkedEntities {
     Self(Arc::new(entities))
   }
 
+  pub fn get_mut(&mut self) -> Option<&mut Vec<hecs::Entity>> {
+    Arc::get_mut(&mut self.0)
+  }
+
   pub fn strong_clone(&self) -> Arc<Vec<hecs::Entity>> {
-    Arc::clone(self)
+    Arc::clone(&self.0)
   }
 }
 
@@ -200,5 +204,4 @@ deref_component!(Sprite, SpriteID);
 deref_component!(ActionQueue, VecDeque<ActionKind>);
 deref_component!(Tickable, InteractableHandlerKind);
 deref_component!(Facing, Direction);
-deref_component!(LinkedEntities, Arc<Vec<hecs::Entity>>);
 deref_component!(Locked, LockKind);
