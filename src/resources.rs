@@ -155,7 +155,8 @@ impl AssetManager {
 const VERTEX_SHADER: &str = include_str!("../assets/materials/vertex.glsl");
 const CRT_SHADER: &str = include_str!("../assets/materials/crt.glsl");
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
+#[serde(default)]
 pub struct Settings {
   pub animation_speed_multiplier: f32,
   pub ui_scale_factor: f32,

@@ -8,13 +8,18 @@ pub mod states;
 pub mod systems;
 pub mod utils;
 
-use crate::core::{Game, GameState};
-use crate::resources::Settings;
-
+use core::Game;
 use egui_macroquad::egui;
+use resources::Settings;
+use states::{GameState, PlannedGameState};
+
+use states::gameplay::Gameplay;
+use states::menu::Menu;
 
 use macroquad::miniquad::conf::{AppleGfxApi, Platform};
+use macroquad::miniquad::date::now;
 use macroquad::prelude::*;
+use macroquad::rand::srand;
 
 // Набор звуков:         https://ci.itch.io/400-sounds-pack
 //                       https://nihil-existentia.itch.io/free-audio-asset-collection
@@ -24,6 +29,8 @@ use macroquad::prelude::*;
 async fn main() -> anyhow::Result<()> {
   set_pc_assets_folder("assets");
   set_default_filter_mode(FilterMode::Nearest);
+
+  srand(now() as u64);
 
   Settings::init_or_load()?;
 
@@ -50,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let ui_wants_input = ui_wants_pointer_input || ui_wants_keyboard_input;
-    update_and_draw(&mut current_state, &state, ui_wants_input)?;
+    update_and_draw(&mut current_state, &mut state, ui_wants_input)?;
 
     egui_macroquad::draw();
 
@@ -73,32 +80,45 @@ fn window_conf() -> Conf {
 }
 
 fn draw_ui(current_state: &mut GameState, egui_ctx: &egui::Context) {
-  let maybe_new_state = match current_state {
+  match current_state {
     GameState::Menu(menu) => menu.draw_ui(egui_ctx),
     GameState::Editor(editor) => editor.draw_ui(egui_ctx),
     GameState::Gameplay(gameplay) => gameplay.draw_ui(egui_ctx),
-  };
-
-  if let Some(new_state) = maybe_new_state {
-    *current_state = new_state;
   }
 }
 
 fn update_and_draw(
   current_state: &mut GameState,
-  state: &Game,
+  state: &mut Game,
   ui_wants_input: bool,
 ) -> anyhow::Result<()> {
-  match current_state {
-    GameState::Menu(_) => (),
+  let planned_state = match current_state {
+    GameState::Menu(menu) => menu.planned(),
     GameState::Editor(editor) => {
       editor.update(ui_wants_input);
       editor.draw(state);
+      editor.planned()
     }
     GameState::Gameplay(gameplay) => {
       gameplay.update(state)?;
       gameplay.draw(state);
+      gameplay.planned()
     }
-  }
+  };
+
+  let Some(planned) = planned_state else {
+    return Ok(());
+  };
+
+  *current_state = match planned {
+    PlannedGameState::Menu => GameState::Menu(Menu::default()),
+    PlannedGameState::Editor => GameState::Editor(Box::default()),
+    PlannedGameState::Gameplay(world_info) => {
+      let lua = state.lua.clone();
+      let (info, world) = *world_info;
+
+      GameState::Gameplay(Box::new(Gameplay::new(lua, info, world)))
+    }
+  };
   Ok(())
 }

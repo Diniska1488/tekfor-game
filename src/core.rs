@@ -1,10 +1,8 @@
 use crate::components::*;
+use crate::lock_picking::LockKind;
 use crate::resources::{AssetManager, SpriteID};
 use crate::scripting;
 use crate::serialize::WorldInfo;
-use crate::states::editor::Editor;
-use crate::states::gameplay::Gameplay;
-use crate::states::menu::Menu;
 
 use mlua::Lua;
 use serde::{Deserialize, Serialize};
@@ -74,18 +72,6 @@ impl Game {
     }
 
     self.camera.update(mouse_position_local(), is_mouse_button_down(MouseButton::Left));
-  }
-}
-
-pub enum GameState {
-  Menu(Menu),
-  Editor(Box<Editor>),
-  Gameplay(Box<Gameplay>),
-}
-
-impl Default for GameState {
-  fn default() -> Self {
-    Self::Menu(Menu::default())
   }
 }
 
@@ -235,8 +221,8 @@ impl WorldGrid {
     entity
   }
 
-  pub fn spawn_ground_at(&mut self, pos: UVec2) -> hecs::Entity {
-    self.spawn_entity((Sprite(SpriteID::Ground), OnGrid, Position(pos)))
+  pub fn spawn_ground_at(&mut self, pos: UVec2, id: SpriteID) -> hecs::Entity {
+    self.spawn_entity((Sprite(id), OnGrid, Position(pos)))
   }
 
   pub fn spawn_downstairs_at(&mut self, pos: UVec2, id: SpriteID) -> hecs::Entity {
@@ -335,18 +321,18 @@ impl WorldGrid {
     entity
   }
 
-  pub fn spawn_door_at(&mut self, pos: UVec2, is_locked: bool) -> hecs::Entity {
+  pub fn spawn_door_at(&mut self, pos: UVec2, lock_kind: Option<LockKind>) -> hecs::Entity {
     let entity = self.spawn_entity((
       StatefulObjectKind::Door,
-      Sprite(if is_locked { SpriteID::DoorLocked } else { SpriteID::DoorUnlocked }),
+      Sprite(if lock_kind.is_some() { SpriteID::DoorLocked } else { SpriteID::DoorUnlocked }),
       OnGrid,
       Obstacle,
       Position(pos),
       InteractableHandlerKind::Door,
     ));
 
-    if is_locked {
-      let _ = self.world.insert_one(entity, Locked);
+    if let Some(kind) = lock_kind {
+      let _ = self.world.insert_one(entity, Locked(kind));
     }
     entity
   }

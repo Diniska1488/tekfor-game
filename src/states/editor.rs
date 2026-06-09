@@ -1,8 +1,9 @@
 use crate::components::*;
-use crate::core::{Direction, Game, GameState, Grid, WorldGrid};
+use crate::core::{Direction, Game, Grid, WorldGrid};
+use crate::lock_picking::LockKind;
 use crate::resources::SpriteID;
 use crate::serialize::*;
-use crate::states::menu::Menu;
+use crate::states::PlannedGameState;
 use crate::systems::draw::draw_sprites;
 use crate::utils;
 
@@ -21,6 +22,7 @@ pub struct Editor {
   cursor_pos: UVec2,
   selected_entity: Option<hecs::Entity>,
   should_capture_keyboard: bool,
+  should_return_to_menu: bool,
   is_in_linkage_mode: bool,
   entity_info: EntityInfo,
 }
@@ -34,6 +36,7 @@ impl Editor {
       cursor_pos: UVec2::ZERO,
       selected_entity: None,
       should_capture_keyboard: false,
+      should_return_to_menu: false,
       is_in_linkage_mode: false,
       entity_info: EntityInfo::default(),
     }
@@ -47,76 +50,75 @@ impl Editor {
     });
   }
 
-  pub fn draw_ui(&mut self, egui_ctx: &egui::Context) -> Option<GameState> {
-    let inner_response = egui::Window::new("Level editor")
-      .resizable(false)
-      .show(egui_ctx, |ui| {
-        if ui.button("Return to main menu").clicked() {
-          let menu = Menu::default();
+  pub fn draw_ui(&mut self, egui_ctx: &egui::Context) {
+    egui::Window::new("Level editor").resizable(false).show(egui_ctx, |ui| {
+      if ui.button("Return to main menu").clicked() {
+        self.should_return_to_menu = true;
+      }
 
-          return Some(GameState::Menu(menu));
+      ui.separator();
+
+      let save_load_result = ui.horizontal(|ui| {
+        let resp = egui::TextEdit::singleline(&mut self.level_path)
+          .hint_text("Level path")
+          .show(ui)
+          .response;
+
+        self.should_capture_keyboard = resp.clicked() || resp.changed();
+
+        if ui.button("Save").clicked() {
+          let bytes = serialize_world_info(&self.world_info, &self.world_grid)?;
+
+          fs::write(&self.level_path, bytes)?;
         }
+
+        if ui.button("Load").clicked() {
+          let bytes = fs::read(&self.level_path)?;
+
+          let (info, world) = deserialize_world_info(&bytes)?;
+
+          self.world_grid = WorldGrid::new(&info, world);
+          self.world_info = info;
+        }
+        Ok::<(), anyhow::Error>(())
+      });
+
+      if let Err(err) = save_load_result.inner {
+        log::error!("{}", err);
+      }
+
+      let is_world_width_changed =
+        draw_drag_value_ui("World width", &mut self.world_info.width, ui).changed();
+      let is_world_height_changed =
+        draw_drag_value_ui("World height", &mut self.world_info.height, ui).changed();
+
+      let should_resize_grid = is_world_width_changed || is_world_height_changed;
+
+      if should_resize_grid {
+        self.world_grid.resize(self.world_info.width, self.world_info.height);
+      }
+
+      ui.separator();
+
+      let is_in_bounds = self.world_grid.get_cell(self.cursor_pos.x, self.cursor_pos.y).is_some();
+
+      if is_in_bounds {
+        self.draw_current_entity_ui(ui);
+        self.draw_sprite_ui(ui);
 
         ui.separator();
+      }
 
-        let save_load_result = ui.horizontal(|ui| {
-          let resp = egui::TextEdit::singleline(&mut self.level_path)
-            .hint_text("Level path")
-            .show(ui)
-            .response;
+      ui.label(format!("Position: x: {}, y: {}", self.cursor_pos.x, self.cursor_pos.y));
+    });
+  }
 
-          self.should_capture_keyboard = resp.clicked() || resp.changed();
+  pub fn planned(&self) -> Option<PlannedGameState> {
+    if self.should_return_to_menu {
+      return Some(PlannedGameState::Menu);
+    }
 
-          if ui.button("Save").clicked() {
-            let bytes = serialize_world_info(&self.world_info, &self.world_grid)?;
-
-            fs::write(&self.level_path, bytes)?;
-          }
-
-          if ui.button("Load").clicked() {
-            let bytes = fs::read(&self.level_path)?;
-
-            let (info, world) = deserialize_world_info(&bytes)?;
-
-            self.world_grid = WorldGrid::new(&info, world);
-            self.world_info = info;
-          }
-          Ok::<(), anyhow::Error>(())
-        });
-
-        if let Err(err) = save_load_result.inner {
-          log::error!("{}", err);
-        }
-
-        let is_world_width_changed =
-          draw_drag_value_ui("World width", &mut self.world_info.width, ui).changed();
-        let is_world_height_changed =
-          draw_drag_value_ui("World height", &mut self.world_info.height, ui).changed();
-
-        let should_resize_grid = is_world_width_changed || is_world_height_changed;
-
-        if should_resize_grid {
-          self.world_grid.resize(self.world_info.width, self.world_info.height);
-        }
-
-        ui.separator();
-
-        let is_in_bounds = self.world_grid.get_cell(self.cursor_pos.x, self.cursor_pos.y).is_some();
-
-        if is_in_bounds {
-          self.draw_current_entity_ui(ui);
-          self.draw_sprite_ui(ui);
-
-          ui.separator();
-        }
-
-        ui.label(format!("Position: x: {}, y: {}", self.cursor_pos.x, self.cursor_pos.y));
-
-        None
-      })
-      .unwrap();
-
-    inner_response.inner.unwrap_or(None)
+    None
   }
 
   pub fn update(&mut self, ui_wants_input: bool) {
@@ -281,8 +283,8 @@ impl Editor {
       SpriteID::Player => self.draw_plain_sprite_ui(ui, |this| {
         Some(this.world_grid.spawn_player_at(this.cursor_pos))
       }),
-      door_sprite_id @ (SpriteID::DoorLocked | SpriteID::DoorUnlocked) => self.draw_plain_sprite_ui(ui, |this| {
-        Some(this.world_grid.spawn_door_at(this.cursor_pos, door_sprite_id == SpriteID::DoorLocked))
+      SpriteID::DoorUnlocked => self.draw_plain_sprite_ui(ui, |this| {
+        Some(this.world_grid.spawn_door_at(this.cursor_pos, None))
       }),
       downstairs_sprite_id @ SpriteID::DownstairsHorizontalUpper => self.draw_plain_sprite_ui(ui, |this| {
         Some(this.world_grid.spawn_downstairs_at(this.cursor_pos, downstairs_sprite_id))
@@ -290,6 +292,7 @@ impl Editor {
       SpriteID::Ground => self.draw_plain_sprite_ui(ui, |this| {
         Some(this.world_grid.spawn_ground_at(this.cursor_pos))
       }),
+      SpriteID::DoorLocked => self.draw_door_locked_ui(ui),
       SpriteID::PressurePlate => self.draw_pressure_plate_ui(ui),
       SpriteID::Saw => self.draw_saw_ui(ui),
       SpriteID::Fireball => self.draw_fireball_ui(ui),
@@ -299,6 +302,22 @@ impl Editor {
     if let Some(entity) = spawned_entity {
       self.selected_entity.replace(entity);
     }
+  }
+
+  fn draw_door_locked_ui(&mut self, ui: &mut egui::Ui) -> Option<hecs::Entity> {
+    let selected_text: &'static str = self.entity_info.lock_kind.map(Into::into).unwrap_or("...");
+
+    egui::ComboBox::from_label("Lock kind").selected_text(selected_text).show_ui(ui, |ui| {
+      for lock_kind in LockKind::iter() {
+        let text: &'static str = lock_kind.into();
+
+        ui.selectable_value(&mut self.entity_info.lock_kind, Some(lock_kind), text);
+      }
+    });
+
+    self.draw_plain_sprite_ui(ui, |this| {
+      Some(this.world_grid.spawn_door_at(this.cursor_pos, this.entity_info.lock_kind))
+    })
   }
 
   fn draw_fireball_ui(&mut self, ui: &mut egui::Ui) -> Option<hecs::Entity> {
@@ -387,4 +406,5 @@ pub struct EntityInfo {
   linked_entities: Vec<hecs::Entity>,
   direction_from: Option<Direction>,
   direction_to: Option<Direction>,
+  lock_kind: Option<LockKind>,
 }

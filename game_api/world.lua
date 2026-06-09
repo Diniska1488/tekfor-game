@@ -1,14 +1,13 @@
 ---@meta
 
----@enum LockPickKind
-LockPickKind = {
+---@enum LockKind
+LockKind = {
   Basic = "basic",
 }
 
----@alias LockPickData table
-LockPickData = {}
+---@alias LockData string
 
----@param kind LockPickKind
----@param data LockPickData
+---@param kind LockKind
+---@param data LockData
 ---@return boolean
 function on_lock_pick(kind, data) end

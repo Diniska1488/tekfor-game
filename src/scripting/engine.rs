@@ -1,4 +1,4 @@
-use crate::lock_picking::LockPickKind;
+use crate::lock_picking::LockKind;
 
 use macroquad::logging as log;
 use serde::Serialize;
@@ -10,7 +10,7 @@ use mlua::prelude::*;
 pub fn create() -> LuaResult<Lua> {
   let lua = Lua::new();
 
-  add_enum::<LockPickKind>(&lua)?;
+  add_enum::<LockKind>(&lua)?;
 
   add_func(&lua, "whisper_to_abyss", |lua, message: LuaValue| {
     log::info!("{}", lua.from_value::<String>(message)?);

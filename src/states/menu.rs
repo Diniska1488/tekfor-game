@@ -1,9 +1,7 @@
 use crate::resources::Settings;
 use crate::serialize::*;
-use crate::{GameState, utils};
-
-use crate::states::editor::Editor;
-use crate::states::gameplay::Gameplay;
+use crate::states::PlannedGameState;
+use crate::utils;
 
 use egui_macroquad::egui;
 
@@ -17,25 +15,24 @@ pub struct Menu {
   should_draw_window: ShouldDrawWindow,
   chosen_level: Option<String>,
   should_start_level: bool,
+  should_start_editor: bool,
 }
 
 impl Menu {
-  pub fn draw_ui(&mut self, egui_ctx: &egui::Context) -> Option<GameState> {
-    let inner_response = egui::Window::new("Menu")
+  pub fn draw_ui(&mut self, egui_ctx: &egui::Context) {
+    egui::Window::new("Menu")
       .resizable(false)
       .movable(false)
       .collapsible(false)
       .title_bar(false)
       .show(egui_ctx, |ui| {
-        let result = ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
+        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
           if ui.button("Choose level").clicked() {
             self.should_draw_window.choose_level = true;
           }
 
           if ui.button("Editor").clicked() {
-            let editor = Box::new(Editor::new());
-
-            return Some(GameState::Editor(editor));
+            self.should_start_editor = true;
           }
 
           if ui.button("Settings").clicked() {
@@ -45,32 +42,11 @@ impl Menu {
           if ui.button("Quit").clicked() {
             order_quit();
           }
-
-          None
         });
-
-        result.inner
-      })
-      .unwrap();
+      });
 
     self.draw_choose_level_window(egui_ctx);
     self.draw_settings_window(egui_ctx);
-
-    if let Some(ref level_path) = self.chosen_level
-      && self.should_start_level
-    {
-      let bytes = fs::read(level_path).unwrap();
-      let (info, world) = deserialize_world_info(&bytes).unwrap();
-
-      let gameplay = Box::new(Gameplay::new(info, world));
-
-      return Some(GameState::Gameplay(gameplay));
-    }
-
-    // Изменилось ли глобальное-игровое состояние?
-    //
-    // Если да, то даем основному циклу узнать об этом и предпринять соответствующие меры.
-    inner_response.inner.unwrap()
   }
 
   fn draw_choose_level_window(&mut self, egui_ctx: &egui::Context) {
@@ -115,6 +91,20 @@ impl Menu {
           let _ = settings.save();
         }
       });
+  }
+
+  pub fn planned(&self) -> Option<PlannedGameState> {
+    if let Some(ref level_path) = self.chosen_level
+      && self.should_start_level
+    {
+      let bytes = fs::read(level_path).unwrap();
+      let world_info = deserialize_world_info(&bytes).map(Box::new).unwrap();
+
+      return Some(PlannedGameState::Gameplay(world_info));
+    } else if self.should_start_editor {
+      return Some(PlannedGameState::Editor);
+    }
+    None
   }
 }
 

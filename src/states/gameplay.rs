@@ -1,8 +1,8 @@
 use crate::components::*;
-use crate::core::{Direction, Game, GameState, WorldGrid};
+use crate::core::{Direction, Game, WorldGrid};
 use crate::resources::{AssetManager, MaterialID, Settings, SoundID};
 use crate::serialize::WorldInfo;
-use crate::states::menu::Menu;
+use crate::states::PlannedGameState;
 use crate::systems::draw::*;
 use crate::{scripting, utils};
 
@@ -18,16 +18,18 @@ use std::fs;
 pub struct Gameplay {
   pub world_grid: WorldGrid,
   pub game_events: Vec<GameEvent>,
+  pub lua: Lua,
   script_path: Option<String>,
   player_entities: Vec<hecs::Entity>,
   tick_state: TickState,
   is_level_finished: bool,
+  should_return_to_menu: bool,
   hit_intensity: f32,
   abyss: Abyss,
 }
 
 impl Gameplay {
-  pub fn new(info: WorldInfo, world: hecs::World) -> Self {
+  pub fn new(lua: Lua, info: WorldInfo, world: hecs::World) -> Self {
     let mut world_grid = WorldGrid::new(&info, world);
 
     let player_entities = world_grid
@@ -39,26 +41,23 @@ impl Gameplay {
     Self {
       world_grid,
       game_events: Vec::new(),
+      lua,
       script_path: None,
       player_entities,
       tick_state: TickState::ProcessingLogic,
       is_level_finished: false,
+      should_return_to_menu: false,
       hit_intensity: 0.0,
       abyss: Abyss::default(),
     }
   }
 
-  pub fn draw_ui(&mut self, egui_ctx: &egui::Context) -> Option<GameState> {
-    if let state = self.draw_gameplay_ui(egui_ctx)
-      && state.is_some()
-    {
-      return state;
-    }
+  pub fn draw_ui(&mut self, egui_ctx: &egui::Context) {
+    self.draw_gameplay_ui(egui_ctx);
 
     if self.is_level_finished {
       self.draw_level_finished_ui(egui_ctx);
     }
-    None
   }
 
   fn draw_level_finished_ui(&mut self, egui_ctx: &egui::Context) {
@@ -67,30 +66,22 @@ impl Gameplay {
     });
   }
 
-  fn draw_gameplay_ui(&mut self, egui_ctx: &egui::Context) -> Option<GameState> {
-    egui::Window::new("Gameplay")
-      .resizable(false)
-      .show(egui_ctx, |ui| {
-        if ui.button("Return to main menu").clicked() {
-          let menu = Menu::default();
+  fn draw_gameplay_ui(&mut self, egui_ctx: &egui::Context) {
+    egui::Window::new("Gameplay").resizable(false).show(egui_ctx, |ui| {
+      if ui.button("Return to main menu").clicked() {
+        self.should_return_to_menu = true;
+      }
 
-          return Some(GameState::Menu(menu));
-        }
+      ui.separator();
 
-        ui.separator();
+      let selected_text = format!("{:?}", self.script_path);
 
-        let selected_text = format!("{:?}", self.script_path);
-
-        egui::ComboBox::from_label("Script").selected_text(selected_text).show_ui(ui, |ui| {
-          utils::with_entries_in("scripts/", |path, filename| {
-            ui.selectable_value(&mut self.script_path, Some(path), filename);
-          })
-        });
-
-        None
-      })
-      .and_then(|resp| resp.inner)
-      .unwrap()
+      egui::ComboBox::from_label("Script").selected_text(selected_text).show_ui(ui, |ui| {
+        utils::with_entries_in("scripts/", |path, filename| {
+          ui.selectable_value(&mut self.script_path, Some(path), filename);
+        })
+      });
+    });
   }
 
   pub fn draw(&self, state: &Game) {
@@ -125,6 +116,14 @@ impl Gameplay {
     );
 
     gl_use_default_material();
+  }
+
+  pub fn planned(&self) -> Option<PlannedGameState> {
+    if self.should_return_to_menu {
+      return Some(PlannedGameState::Menu);
+    }
+
+    None
   }
 
   pub fn update(&mut self, state: &Game) -> mlua::Result<()> {

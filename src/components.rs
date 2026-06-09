@@ -1,4 +1,5 @@
 use crate::core::Direction;
+use crate::lock_picking::LockKind;
 use crate::resources::{Settings, SpriteID};
 use crate::states::gameplay::Gameplay;
 use crate::systems::tick::*;
@@ -164,7 +165,7 @@ pub struct Tickable(pub InteractableHandlerKind);
 pub struct Facing(pub Direction);
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
-pub struct Locked;
+pub struct Locked(pub LockKind);
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct Movable;
@@ -200,3 +201,4 @@ deref_component!(ActionQueue, VecDeque<ActionKind>);
 deref_component!(Tickable, InteractableHandlerKind);
 deref_component!(Facing, Direction);
 deref_component!(LinkedEntities, Arc<Vec<hecs::Entity>>);
+deref_component!(Locked, LockKind);

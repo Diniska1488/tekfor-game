@@ -1,6 +1,9 @@
 use crate::components::*;
+use crate::lock_picking::LockKind;
 use crate::states::gameplay::{GameEvent, Gameplay};
-use crate::utils;
+use crate::{scripting, utils};
+
+use macroquad::logging as log;
 
 pub fn fireball_handler(state: &mut Gameplay, this_entity: hecs::Entity) {
   let Ok((queue, dir)) = state
@@ -54,26 +57,30 @@ pub fn pressure_plate_handler(state: &mut Gameplay, this_entity: hecs::Entity) {
     return;
   };
 
-  let is_anything_standing_on_plate = this_cell_entities
-    .iter()
-    .any(|&entity| state.world_grid.satisfies::<&Solid>(entity) && entity != this_entity);
-
   let Ok(linked_entities) =
     state.world_grid.get::<&LinkedEntities>(this_entity).map(|le| le.strong_clone())
   else {
     return;
   };
 
-  for &entity in linked_entities.iter() {
-    let is_locked = state.world_grid.satisfies::<&Locked>(entity);
+  let is_anything_standing_on_plate = this_cell_entities
+    .iter()
+    .any(|&entity| state.world_grid.satisfies::<&Solid>(entity) && entity != this_entity);
 
-    let event = match (is_anything_standing_on_plate, is_locked) {
-      (true, true) => {
+  for &entity in linked_entities.iter() {
+    let (is_locked, is_lock_basic) = match state.world_grid.get::<&Locked>(entity) {
+      Ok(locked) => (true, locked.into_inner() == LockKind::Basic),
+      Err(hecs::ComponentError::MissingComponent(_)) => (false, false),
+      Err(hecs::ComponentError::NoSuchEntity) => unreachable!(),
+    };
+
+    let event = match (is_anything_standing_on_plate, is_locked, is_lock_basic) {
+      (true, true, true) => {
         let _ = state.world_grid.remove_one::<Locked>(entity);
         GameEvent::DoorUnlock
       }
-      (false, false) => {
-        let _ = state.world_grid.insert_one(entity, Locked);
+      (false, false, true) => {
+        let _ = state.world_grid.insert_one(entity, Locked(LockKind::Basic));
         GameEvent::DoorLock
       }
       _ => continue,
@@ -84,10 +91,17 @@ pub fn pressure_plate_handler(state: &mut Gameplay, this_entity: hecs::Entity) {
 }
 
 pub fn door_handler(state: &mut Gameplay, this_entity: hecs::Entity) {
-  if state.world_grid.satisfies::<&Locked>(this_entity) {
-    return;
+  if let Ok(lock_kind) = state.world_grid.get::<&Locked>(this_entity).map(|l| l.into_inner()) {
+    match scripting::api::on_lock_pick(&state.lua, lock_kind) {
+      Ok(true /* success */) => (),
+      Ok(false) => {
+        return log::info!("Invalid lock-picking result");
+      }
+      Err(err) => {
+        return log::error!("Error occured during lock-picking process: {}", err);
+      }
+    }
   }
-
   state.game_events.push(GameEvent::DoorOpen(this_entity));
 }
 
